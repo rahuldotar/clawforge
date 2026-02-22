@@ -149,3 +149,39 @@ export type OrgUser = {
 export function getUsers(orgId: string, token: string) {
   return apiFetch<{ users: OrgUser[] }>(`/api/v1/users/${orgId}`, { token });
 }
+
+// --- Enrollment Tokens ---
+
+export type EnrollmentToken = {
+  id: string;
+  token: string;
+  label?: string;
+  expiresAt?: string;
+  maxUses?: number;
+  usedCount: number;
+  revokedAt?: string;
+  createdAt: string;
+};
+
+export function getEnrollmentTokens(orgId: string, token: string) {
+  return apiFetch<{ tokens: EnrollmentToken[] }>(`/api/v1/enrollment-tokens/${orgId}`, { token });
+}
+
+export function createEnrollmentToken(
+  orgId: string,
+  token: string,
+  body: { label?: string; expiresAt?: string; maxUses?: number },
+) {
+  return apiFetch<EnrollmentToken>(`/api/v1/enrollment-tokens/${orgId}`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export function revokeEnrollmentToken(orgId: string, tokenId: string, token: string) {
+  return apiFetch(`/api/v1/enrollment-tokens/${orgId}/${tokenId}`, {
+    method: "DELETE",
+    token,
+  });
+}

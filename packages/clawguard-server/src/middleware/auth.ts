@@ -27,6 +27,9 @@ export async function registerAuthMiddleware(app: FastifyInstance): Promise<void
     // Skip auth for public endpoints.
     if (
       request.url === "/api/v1/auth/exchange" ||
+      request.url === "/api/v1/auth/login" ||
+      request.url === "/api/v1/auth/mode" ||
+      request.url === "/api/v1/auth/enroll" ||
       request.url === "/health"
     ) {
       return;
