@@ -46,6 +46,7 @@ export const users = pgTable(
     role: text("role", { enum: ["admin", "user"] })
       .notNull()
       .default("user"),
+    passwordHash: text("password_hash"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
