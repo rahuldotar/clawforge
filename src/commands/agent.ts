@@ -1,9 +1,9 @@
-import type { AgentCommandOpts } from "./agent/types.js";
 import {
   listAgentIds,
   resolveAgentDir,
   resolveEffectiveModelFallbacks,
   resolveAgentModelPrimary,
+  resolveSessionAgentId,
   resolveAgentSkillsFilter,
   resolveAgentWorkspaceDir,
 } from "../agents/agent-scope.js";
@@ -41,8 +41,12 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { type CliDeps, createDefaultDeps } from "../cli/deps.js";
 import { loadConfig } from "../config/config.js";
 import {
+  parseSessionThreadInfo,
+  resolveAndPersistSessionFile,
   resolveAgentIdFromSessionKey,
   resolveSessionFilePath,
+  resolveSessionFilePathOptions,
+  resolveSessionTranscriptPath,
   type SessionEntry,
   updateSessionStore,
 } from "../config/sessions.js";
@@ -62,6 +66,7 @@ import { deliverAgentCommandResult } from "./agent/delivery.js";
 import { resolveAgentRunContext } from "./agent/run-context.js";
 import { updateSessionStoreAfterAgentRun } from "./agent/session-store.js";
 import { resolveSession } from "./agent/session.js";
+import type { AgentCommandOpts } from "./agent/types.js";
 
 type PersistSessionEntryParams = {
   sessionStore: Record<string, SessionEntry>;
@@ -214,14 +219,6 @@ export async function agentCommand(
     }
   }
   const agentCfg = cfg.agents?.defaults;
-  const sessionAgentId = agentIdOverride ?? resolveAgentIdFromSessionKey(opts.sessionKey?.trim());
-  const workspaceDirRaw = resolveAgentWorkspaceDir(cfg, sessionAgentId);
-  const agentDir = resolveAgentDir(cfg, sessionAgentId);
-  const workspace = await ensureAgentWorkspace({
-    dir: workspaceDirRaw,
-    ensureBootstrapFiles: !agentCfg?.skipBootstrap,
-  });
-  const workspaceDir = workspace.dir;
   const configuredModel = resolveConfiguredModelRef({
     cfg,
     defaultProvider: DEFAULT_PROVIDER,
@@ -280,6 +277,19 @@ export async function agentCommand(
     persistedThinking,
     persistedVerbose,
   } = sessionResolution;
+  const sessionAgentId =
+    agentIdOverride ??
+    resolveSessionAgentId({
+      sessionKey: sessionKey ?? opts.sessionKey?.trim(),
+      config: cfg,
+    });
+  const workspaceDirRaw = resolveAgentWorkspaceDir(cfg, sessionAgentId);
+  const agentDir = resolveAgentDir(cfg, sessionAgentId);
+  const workspace = await ensureAgentWorkspace({
+    dir: workspaceDirRaw,
+    ensureBootstrapFiles: !agentCfg?.skipBootstrap,
+  });
+  const workspaceDir = workspace.dir;
   let sessionEntry = resolvedSessionEntry;
   const runId = opts.runId?.trim() || sessionId;
 
@@ -359,6 +369,7 @@ export async function agentCommand(
         storePath,
         entry: next,
       });
+      sessionEntry = next;
     }
 
     const agentModelPrimary = resolveAgentModelPrimary(cfg, sessionAgentId);
@@ -505,9 +516,33 @@ export async function agentCommand(
         });
       }
     }
-    const sessionFile = resolveSessionFilePath(sessionId, sessionEntry, {
+    const sessionPathOpts = resolveSessionFilePathOptions({
       agentId: sessionAgentId,
+      storePath,
     });
+    let sessionFile = resolveSessionFilePath(sessionId, sessionEntry, sessionPathOpts);
+    if (sessionStore && sessionKey) {
+      const threadIdFromSessionKey = parseSessionThreadInfo(sessionKey).threadId;
+      const fallbackSessionFile = !sessionEntry?.sessionFile
+        ? resolveSessionTranscriptPath(
+            sessionId,
+            sessionAgentId,
+            opts.threadId ?? threadIdFromSessionKey,
+          )
+        : undefined;
+      const resolvedSessionFile = await resolveAndPersistSessionFile({
+        sessionId,
+        sessionKey,
+        sessionStore,
+        storePath,
+        sessionEntry,
+        agentId: sessionPathOpts?.agentId,
+        sessionsDir: sessionPathOpts?.sessionsDir,
+        fallbackSessionFile,
+      });
+      sessionFile = resolvedSessionFile.sessionFile;
+      sessionEntry = resolvedSessionFile.sessionEntry;
+    }
 
     const startedAt = Date.now();
     let lifecycleEnded = false;

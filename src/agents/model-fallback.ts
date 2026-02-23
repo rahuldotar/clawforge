@@ -1,9 +1,9 @@
 import type { OpenClawConfig } from "../config/config.js";
-import type { FailoverReason } from "./pi-embedded-helpers.js";
 import {
   ensureAuthProfileStore,
   getSoonestCooldownExpiry,
   isProfileInCooldown,
+  resolveProfilesUnavailableReason,
   resolveAuthProfileOrder,
 } from "./auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
@@ -21,6 +21,7 @@ import {
   resolveConfiguredModelRef,
   resolveModelRefFromString,
 } from "./model-selection.js";
+import type { FailoverReason } from "./pi-embedded-helpers.js";
 import { isLikelyContextOverflowError } from "./pi-embedded-helpers.js";
 
 type ModelCandidate = {
@@ -95,6 +96,30 @@ type ModelFallbackRunResult<T> = {
   model: string;
   attempts: FallbackAttempt[];
 };
+
+function sameModelCandidate(a: ModelCandidate, b: ModelCandidate): boolean {
+  return a.provider === b.provider && a.model === b.model;
+}
+
+function throwFallbackFailureSummary(params: {
+  attempts: FallbackAttempt[];
+  candidates: ModelCandidate[];
+  lastError: unknown;
+  label: string;
+  formatAttempt: (attempt: FallbackAttempt) => string;
+}): never {
+  if (params.attempts.length <= 1 && params.lastError) {
+    throw params.lastError;
+  }
+  const summary =
+    params.attempts.length > 0 ? params.attempts.map(params.formatAttempt).join(" | ") : "unknown";
+  throw new Error(
+    `All ${params.label} failed (${params.attempts.length || params.candidates.length}): ${summary}`,
+    {
+      cause: params.lastError instanceof Error ? params.lastError : undefined,
+    },
+  );
+}
 
 function resolveImageFallbackCandidates(params: {
   cfg: OpenClawConfig | undefined;
@@ -173,6 +198,7 @@ function resolveFallbackCandidates(params: {
   const providerRaw = String(params.provider ?? "").trim() || defaultProvider;
   const modelRaw = String(params.model ?? "").trim() || defaultModel;
   const normalizedPrimary = normalizeModelRef(providerRaw, modelRaw);
+  const configuredPrimary = normalizeModelRef(defaultProvider, defaultModel);
   const aliasIndex = buildModelAliasIndex({
     cfg: params.cfg ?? {},
     defaultProvider,
@@ -188,6 +214,11 @@ function resolveFallbackCandidates(params: {
   const modelFallbacks = (() => {
     if (params.fallbacksOverride !== undefined) {
       return params.fallbacksOverride;
+    }
+    // Skip configured fallback chain when the user runs a non-default override.
+    // In that case, retry should return directly to configured primary.
+    if (!sameModelCandidate(normalizedPrimary, configuredPrimary)) {
+      return []; // Override model failed → go straight to configured default
     }
     const model = params.cfg?.agents?.defaults?.model as
       | { fallbacks?: string[] }
@@ -312,12 +343,18 @@ export async function runWithModelFallback<T>(params: {
           profileIds,
         });
         if (!shouldProbe) {
+          const inferredReason =
+            resolveProfilesUnavailableReason({
+              store: authStore,
+              profileIds,
+              now,
+            }) ?? "rate_limit";
           // Skip without attempting
           attempts.push({
             provider: candidate.provider,
             model: candidate.model,
             error: `Provider ${candidate.provider} is in cooldown (all profiles unavailable)`,
-            reason: "rate_limit",
+            reason: inferredReason,
           });
           continue;
         }
@@ -376,22 +413,15 @@ export async function runWithModelFallback<T>(params: {
     }
   }
 
-  if (attempts.length <= 1 && lastError) {
-    throw lastError;
-  }
-  const summary =
-    attempts.length > 0
-      ? attempts
-          .map(
-            (attempt) =>
-              `${attempt.provider}/${attempt.model}: ${attempt.error}${
-                attempt.reason ? ` (${attempt.reason})` : ""
-              }`,
-          )
-          .join(" | ")
-      : "unknown";
-  throw new Error(`All models failed (${attempts.length || candidates.length}): ${summary}`, {
-    cause: lastError instanceof Error ? lastError : undefined,
+  throwFallbackFailureSummary({
+    attempts,
+    candidates,
+    lastError,
+    label: "models",
+    formatAttempt: (attempt) =>
+      `${attempt.provider}/${attempt.model}: ${attempt.error}${
+        attempt.reason ? ` (${attempt.reason})` : ""
+      }`,
   });
 }
 
@@ -445,16 +475,11 @@ export async function runWithImageModelFallback<T>(params: {
     }
   }
 
-  if (attempts.length <= 1 && lastError) {
-    throw lastError;
-  }
-  const summary =
-    attempts.length > 0
-      ? attempts
-          .map((attempt) => `${attempt.provider}/${attempt.model}: ${attempt.error}`)
-          .join(" | ")
-      : "unknown";
-  throw new Error(`All image models failed (${attempts.length || candidates.length}): ${summary}`, {
-    cause: lastError instanceof Error ? lastError : undefined,
+  throwFallbackFailureSummary({
+    attempts,
+    candidates,
+    lastError,
+    label: "image models",
+    formatAttempt: (attempt) => `${attempt.provider}/${attempt.model}: ${attempt.error}`,
   });
 }

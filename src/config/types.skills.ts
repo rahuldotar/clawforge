@@ -22,6 +22,19 @@ export type SkillsInstallConfig = {
   nodeManager?: "npm" | "pnpm" | "yarn" | "bun";
 };
 
+export type SkillsLimitsConfig = {
+  /** Max number of immediate child directories to consider under a skills root before treating it as suspicious. */
+  maxCandidatesPerRoot?: number;
+  /** Max number of skills to load per skills source (bundled/managed/workspace/extra). */
+  maxSkillsLoadedPerSource?: number;
+  /** Max number of skills to include in the model-facing skills prompt. */
+  maxSkillsInPrompt?: number;
+  /** Max characters for the model-facing skills prompt block (approx). */
+  maxSkillsPromptChars?: number;
+  /** Max size (bytes) allowed for a SKILL.md file to be considered. */
+  maxSkillFileBytes?: number;
+};
+
 export type SkillsEnterpriseConfig = {
   /** When true, only skills listed in approvedSkills are loaded. */
   requireApproval?: boolean;
@@ -34,6 +47,7 @@ export type SkillsConfig = {
   allowBundled?: string[];
   load?: SkillsLoadConfig;
   install?: SkillsInstallConfig;
+  limits?: SkillsLimitsConfig;
   entries?: Record<string, SkillConfig>;
   /** Enterprise governance: restrict skills to an org-approved list. */
   enterprise?: SkillsEnterpriseConfig;

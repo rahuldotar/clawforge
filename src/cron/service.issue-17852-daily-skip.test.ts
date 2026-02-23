@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { CronServiceState } from "./service/state.js";
-import type { CronJob } from "./types.js";
+import { createMockCronStateForJobs } from "./service.test-harness.js";
 import { recomputeNextRuns, recomputeNextRunsForMaintenance } from "./service/jobs.js";
+import type { CronJob } from "./types.js";
 
 /**
  * Regression test for issue #17852: daily cron jobs skip a day (48h jump).
@@ -19,22 +19,19 @@ describe("issue #17852 - daily cron jobs should not skip days", () => {
   const HOUR_MS = 3_600_000;
   const DAY_MS = 24 * HOUR_MS;
 
-  function createMockState(jobs: CronJob[], nowMs: number): CronServiceState {
+  function createDailyThreeAmJob(threeAM: number): CronJob {
     return {
-      store: { version: 1, jobs },
-      running: false,
-      timer: null,
-      storeLoadedAtMs: nowMs,
-      deps: {
-        storePath: "/mock/path",
-        cronEnabled: true,
-        nowMs: () => nowMs,
-        log: {
-          debug: () => {},
-          info: () => {},
-          warn: () => {},
-          error: () => {},
-        } as never,
+      id: "daily-job",
+      name: "daily 3am",
+      enabled: true,
+      schedule: { kind: "cron", expr: "0 3 * * *", tz: "UTC" },
+      payload: { kind: "systemEvent", text: "daily task" },
+      sessionTarget: "main",
+      wakeMode: "next-heartbeat",
+      createdAtMs: threeAM - DAY_MS,
+      updatedAtMs: threeAM - DAY_MS,
+      state: {
+        nextRunAtMs: threeAM,
       },
     };
   }
@@ -46,21 +43,9 @@ describe("issue #17852 - daily cron jobs should not skip days", () => {
     const threeAM = Date.parse("2026-02-16T03:00:00.000Z");
     const now = threeAM + 1_000; // 3:00:01
 
-    const job: CronJob = {
-      id: "daily-job",
-      name: "daily 3am",
-      enabled: true,
-      schedule: { kind: "cron", expr: "0 3 * * *", tz: "UTC" },
-      payload: { kind: "systemEvent", text: "daily task" },
-      sessionTarget: "main",
-      createdAtMs: threeAM - DAY_MS,
-      updatedAtMs: threeAM - DAY_MS,
-      state: {
-        nextRunAtMs: threeAM, // Past-due by 1 second
-      },
-    };
+    const job = createDailyThreeAmJob(threeAM);
 
-    const state = createMockState([job], now);
+    const state = createMockCronStateForJobs({ jobs: [job], nowMs: now });
     recomputeNextRunsForMaintenance(state);
 
     // Maintenance should NOT touch existing past-due nextRunAtMs.
@@ -75,21 +60,9 @@ describe("issue #17852 - daily cron jobs should not skip days", () => {
     const threeAM = Date.parse("2026-02-16T03:00:00.000Z");
     const now = threeAM + 1_000; // 3:00:01
 
-    const job: CronJob = {
-      id: "daily-job",
-      name: "daily 3am",
-      enabled: true,
-      schedule: { kind: "cron", expr: "0 3 * * *", tz: "UTC" },
-      payload: { kind: "systemEvent", text: "daily task" },
-      sessionTarget: "main",
-      createdAtMs: threeAM - DAY_MS,
-      updatedAtMs: threeAM - DAY_MS,
-      state: {
-        nextRunAtMs: threeAM, // Past-due by 1 second
-      },
-    };
+    const job = createDailyThreeAmJob(threeAM);
 
-    const state = createMockState([job], now);
+    const state = createMockCronStateForJobs({ jobs: [job], nowMs: now });
     recomputeNextRuns(state);
 
     // The full recomputeNextRuns advances it to TOMORROW — skipping today's
