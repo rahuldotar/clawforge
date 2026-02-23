@@ -29,13 +29,14 @@ const IngestBodySchema = z.object({
     }),
 });
 
+const RetentionSchema = z.object({
+  retentionDays: z.number().int().min(1).max(3650),
+});
+
 export async function auditRoutes(app: FastifyInstance): Promise<void> {
   const auditService = new AuditService(app.db);
 
-  /**
-   * POST /api/v1/audit/:orgId/events
-   * Ingest audit events from authenticated clients.
-   */
+  // POST /api/v1/audit/:orgId/events - Ingest (keep existing)
   app.post<{ Params: { orgId: string } }>(
     "/api/v1/audit/:orgId/events",
     async (request, reply) => {
@@ -54,7 +55,6 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
       const authUser = request.authUser!;
       const events = parseResult.data.events;
 
-      // Validate all events reference the correct org.
       const invalidOrg = events.find((e) => e.orgId !== orgId);
       if (invalidOrg) {
         return reply.code(400).send({
@@ -62,7 +62,6 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Non-admin users can only submit events for themselves.
       if (authUser.role !== "admin") {
         const invalidUser = events.find((e) => e.userId !== authUser.userId);
         if (invalidUser) {
@@ -77,10 +76,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  /**
-   * GET /api/v1/audit/:orgId/query
-   * Query audit logs (admin only).
-   */
+  // GET /api/v1/audit/:orgId/query - Query with pagination
   app.get<{
     Params: { orgId: string };
     Querystring: {
@@ -92,6 +88,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
       to?: string;
       limit?: string;
       offset?: string;
+      cursor?: string;
     };
   }>("/api/v1/audit/:orgId/query", async (request, reply) => {
     requireAdmin(request, reply);
@@ -101,7 +98,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
     if (reply.sent) return;
 
     const query = request.query;
-    const events = await auditService.queryEvents({
+    const params = {
       orgId,
       userId: query.userId,
       eventType: query.eventType,
@@ -111,8 +108,62 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
       to: query.to ? new Date(query.to) : undefined,
       limit: query.limit ? parseInt(query.limit, 10) : undefined,
       offset: query.offset ? parseInt(query.offset, 10) : undefined,
-    });
+      cursor: query.cursor,
+    };
 
-    return reply.send({ events });
+    const [events, total] = await Promise.all([
+      auditService.queryEvents(params),
+      auditService.countEvents(params),
+    ]);
+
+    const limit = params.limit ?? 100;
+    const nextCursor = events.length === limit ? events[events.length - 1]?.id : undefined;
+
+    return reply.send({ events, total, nextCursor });
   });
+
+  // GET /api/v1/audit/:orgId/events/:eventId - Single event detail
+  app.get<{ Params: { orgId: string; eventId: string } }>(
+    "/api/v1/audit/:orgId/events/:eventId",
+    async (request, reply) => {
+      requireAdmin(request, reply);
+      if (reply.sent) return;
+      const { orgId, eventId } = request.params;
+      requireOrg(request, reply, orgId);
+      if (reply.sent) return;
+
+      const event = await auditService.getEvent(eventId);
+      if (!event || event.orgId !== orgId) {
+        return reply.code(404).send({ error: "Event not found" });
+      }
+
+      return reply.send({ event });
+    },
+  );
+
+  // DELETE /api/v1/audit/:orgId/retention - Retention cleanup
+  app.delete<{ Params: { orgId: string } }>(
+    "/api/v1/audit/:orgId/retention",
+    async (request, reply) => {
+      requireAdmin(request, reply);
+      if (reply.sent) return;
+      const { orgId } = request.params;
+      requireOrg(request, reply, orgId);
+      if (reply.sent) return;
+
+      const parseResult = RetentionSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.code(400).send({
+          error: "Invalid request body",
+          details: parseResult.error.issues,
+        });
+      }
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - parseResult.data.retentionDays);
+
+      const deleted = await auditService.deleteOldEvents(orgId, cutoff);
+      return reply.send({ deleted, cutoffDate: cutoff.toISOString() });
+    },
+  );
 }
