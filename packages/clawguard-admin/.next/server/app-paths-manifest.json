@@ -1,7 +1,7 @@
 {
-  "/policies/page": "app/policies/page.js",
   "/skills/page": "app/skills/page.js",
-  "/kill-switch/page": "app/kill-switch/page.js",
+  "/policies/page": "app/policies/page.js",
+  "/audit/page": "app/audit/page.js",
   "/users/page": "app/users/page.js",
-  "/audit/page": "app/audit/page.js"
+  "/kill-switch/page": "app/kill-switch/page.js"
 }

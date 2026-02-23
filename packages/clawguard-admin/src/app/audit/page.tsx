@@ -6,13 +6,22 @@ import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
 import { getAuth } from "@/lib/auth";
-import { queryAudit } from "@/lib/api";
+import { queryAudit, deleteAuditRetention } from "@/lib/api";
 import type { AuditEvent } from "@/lib/api";
 
 export default function AuditPage() {
   const router = useRouter();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Retention
+  const [retentionDays, setRetentionDays] = useState(90);
+  const [purging, setPurging] = useState(false);
+  const [purgeResult, setPurgeResult] = useState<{ deleted: number; cutoffDate: string } | null>(null);
 
   // Filters
   const [filterUser, setFilterUser] = useState("");
@@ -22,11 +31,7 @@ export default function AuditPage() {
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
-  const loadEvents = useCallback(async () => {
-    const auth = getAuth();
-    if (!auth) return;
-
-    setLoading(true);
+  const buildParams = useCallback(() => {
     const params: Record<string, string> = { limit: "100" };
     if (filterUser) params.userId = filterUser;
     if (filterType) params.eventType = filterType;
@@ -34,15 +39,45 @@ export default function AuditPage() {
     if (filterOutcome) params.outcome = filterOutcome;
     if (filterFrom) params.from = filterFrom;
     if (filterTo) params.to = filterTo;
+    return params;
+  }, [filterUser, filterType, filterTool, filterOutcome, filterFrom, filterTo]);
+
+  const loadEvents = useCallback(async () => {
+    const auth = getAuth();
+    if (!auth) return;
+
+    setLoading(true);
+    const params = buildParams();
 
     try {
       const data = await queryAudit(auth.orgId, auth.accessToken, params);
       setEvents(data.events);
+      setTotal(data.total);
+      setNextCursor(data.nextCursor);
     } catch {
       // leave events as-is
     }
     setLoading(false);
-  }, [filterUser, filterType, filterTool, filterOutcome, filterFrom, filterTo]);
+  }, [buildParams]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor) return;
+    const auth = getAuth();
+    if (!auth) return;
+
+    setLoadingMore(true);
+    const params = buildParams();
+    params.cursor = nextCursor;
+
+    try {
+      const data = await queryAudit(auth.orgId, auth.accessToken, params);
+      setEvents((prev) => [...prev, ...data.events]);
+      setNextCursor(data.nextCursor);
+    } catch {
+      // leave events as-is
+    }
+    setLoadingMore(false);
+  }, [nextCursor, buildParams]);
 
   useEffect(() => {
     const auth = getAuth();
@@ -65,6 +100,23 @@ export default function AuditPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterType]);
 
+  async function handlePurge() {
+    const auth = getAuth();
+    if (!auth) return;
+
+    setPurging(true);
+    setPurgeResult(null);
+    try {
+      const result = await deleteAuditRetention(auth.orgId, auth.accessToken, retentionDays);
+      setPurgeResult(result);
+      // Reload events after purge
+      await loadEvents();
+    } catch {
+      // ignore
+    }
+    setPurging(false);
+  }
+
   function exportCSV() {
     const header = "ID,Timestamp,User,EventType,Tool,Outcome,Session\n";
     const rows = events.map((e) =>
@@ -74,7 +126,7 @@ export default function AuditPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `audit-${total}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -158,7 +210,7 @@ export default function AuditPage() {
         </Card>
 
         {/* Events table */}
-        <Card>
+        <Card className="mb-6">
           {loading ? (
             <p className="text-muted-foreground">Loading...</p>
           ) : events.length === 0 ? (
@@ -178,29 +230,99 @@ export default function AuditPage() {
                 </thead>
                 <tbody>
                   {events.map((event) => (
-                    <tr key={event.id} className="border-b border-border last:border-0">
-                      <td className="py-2 text-muted-foreground whitespace-nowrap">
-                        {new Date(event.timestamp).toLocaleString()}
-                      </td>
-                      <td className="py-2 font-mono text-xs">{event.userId.slice(0, 12)}...</td>
-                      <td className="py-2">{event.eventType}</td>
-                      <td className="py-2 font-mono text-xs">{event.toolName ?? "-"}</td>
-                      <td className="py-2">
-                        <Badge variant={event.outcome === "allowed" ? "success" : event.eventType === "admin_action" ? "default" : "danger"}>
-                          {event.outcome}
-                        </Badge>
-                      </td>
-                      <td className="py-2 font-mono text-xs text-muted-foreground">
-                        {event.sessionKey?.slice(0, 8) ?? "-"}
-                      </td>
-                    </tr>
+                    <>
+                      <tr
+                        key={event.id}
+                        className="border-b border-border last:border-0 cursor-pointer hover:bg-secondary/50"
+                        onClick={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
+                      >
+                        <td className="py-2 text-muted-foreground whitespace-nowrap">
+                          {new Date(event.timestamp).toLocaleString()}
+                        </td>
+                        <td className="py-2 font-mono text-xs">{event.userId.slice(0, 12)}...</td>
+                        <td className="py-2">{event.eventType}</td>
+                        <td className="py-2 font-mono text-xs">{event.toolName ?? "-"}</td>
+                        <td className="py-2">
+                          <Badge variant={event.outcome === "allowed" ? "success" : event.eventType === "admin_action" ? "default" : "danger"}>
+                            {event.outcome}
+                          </Badge>
+                        </td>
+                        <td className="py-2 font-mono text-xs text-muted-foreground">
+                          {event.sessionKey?.slice(0, 8) ?? "-"}
+                        </td>
+                      </tr>
+                      {expandedEventId === event.id && (
+                        <tr key={`${event.id}-detail`} className="border-b border-border">
+                          <td colSpan={6} className="py-3 px-4 bg-secondary/30">
+                            <div className="space-y-2 text-xs">
+                              <div><span className="font-semibold">ID:</span> {event.id}</div>
+                              <div><span className="font-semibold">User ID:</span> {event.userId}</div>
+                              {event.agentId && <div><span className="font-semibold">Agent ID:</span> {event.agentId}</div>}
+                              {event.sessionKey && <div><span className="font-semibold">Session Key:</span> {event.sessionKey}</div>}
+                              {event.metadata && (
+                                <div>
+                                  <span className="font-semibold">Metadata:</span>
+                                  <pre className="mt-1 p-2 bg-background rounded-md overflow-x-auto text-xs">
+                                    {JSON.stringify(event.metadata, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))}
                 </tbody>
               </table>
-              <p className="text-xs text-muted-foreground mt-3">
-                Showing {events.length} events
-              </p>
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-xs text-muted-foreground">
+                  Showing {events.length.toLocaleString()} of {total.toLocaleString()} events
+                </p>
+                {nextCursor && (
+                  <button
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="px-4 py-2 text-sm border border-border rounded-md hover:bg-secondary disabled:opacity-50"
+                  >
+                    {loadingMore ? "Loading..." : "Load More"}
+                  </button>
+                )}
+              </div>
             </div>
+          )}
+        </Card>
+
+        {/* Retention Policy */}
+        <Card>
+          <CardTitle>Retention Policy</CardTitle>
+          <p className="text-sm text-muted-foreground mb-4">
+            Purge audit events older than a specified number of days. This action is irreversible.
+          </p>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium">Delete events older than</label>
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              value={retentionDays}
+              onChange={(e) => setRetentionDays(parseInt(e.target.value, 10) || 90)}
+              className="w-24 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <span className="text-sm text-muted-foreground">days</span>
+            <button
+              onClick={handlePurge}
+              disabled={purging}
+              className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {purging ? "Purging..." : "Purge Old Events"}
+            </button>
+          </div>
+          {purgeResult && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Deleted {purgeResult.deleted.toLocaleString()} events older than{" "}
+              {new Date(purgeResult.cutoffDate).toLocaleDateString()}.
+            </p>
           )}
         </Card>
       </main>

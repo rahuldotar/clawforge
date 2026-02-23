@@ -132,7 +132,19 @@ export type AuditEvent = {
 
 export function queryAudit(orgId: string, token: string, params?: Record<string, string>) {
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  return apiFetch<{ events: AuditEvent[] }>(`/api/v1/audit/${orgId}/query${qs}`, { token });
+  return apiFetch<{ events: AuditEvent[]; total: number; nextCursor?: string }>(`/api/v1/audit/${orgId}/query${qs}`, { token });
+}
+
+export function getAuditEvent(orgId: string, eventId: string, token: string) {
+  return apiFetch<{ event: AuditEvent }>(`/api/v1/audit/${orgId}/events/${eventId}`, { token });
+}
+
+export function deleteAuditRetention(orgId: string, token: string, retentionDays: number) {
+  return apiFetch<{ deleted: number; cutoffDate: string }>(`/api/v1/audit/${orgId}/retention`, {
+    method: "DELETE",
+    token,
+    body: { retentionDays },
+  });
 }
 
 // --- Users ---
