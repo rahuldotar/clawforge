@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/audit", label: "Audit Logs", icon: "file-text" },
   { href: "/kill-switch", label: "Kill Switch", icon: "power" },
   { href: "/users", label: "Users", icon: "users" },
+  { href: "/enrollment", label: "Enrollment", icon: "key" },
   { href: "/settings", label: "Settings", icon: "gear" },
 ];
 
@@ -20,6 +21,7 @@ const ICONS: Record<string, string> = {
   "file-text": "\u2637",
   power: "\u23FB",
   users: "\u263A",
+  key: "\u2386",
   gear: "\u2699",
 };
 

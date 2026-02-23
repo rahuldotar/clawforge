@@ -46,6 +46,7 @@ export const users = pgTable(
     role: text("role", { enum: ["admin", "user"] })
       .notNull()
       .default("user"),
+    passwordHash: text("password_hash"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -203,5 +204,33 @@ export const clientHeartbeats = pgTable(
   },
   (table) => [
     uniqueIndex("client_heartbeats_org_user_idx").on(table.orgId, table.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Enrollment Tokens
+// ---------------------------------------------------------------------------
+
+export const enrollmentTokens = pgTable(
+  "enrollment_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    label: text("label"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    maxUses: integer("max_uses"),
+    usedCount: integer("used_count").notNull().default(0),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("enrollment_tokens_org_idx").on(table.orgId),
+    uniqueIndex("enrollment_tokens_token_idx").on(table.token),
   ],
 );

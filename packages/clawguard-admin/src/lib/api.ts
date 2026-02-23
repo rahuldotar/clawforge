@@ -150,6 +150,84 @@ export function getUsers(orgId: string, token: string) {
   return apiFetch<{ users: OrgUser[] }>(`/api/v1/users/${orgId}`, { token });
 }
 
+// --- Enrollment Tokens ---
+
+export type EnrollmentToken = {
+  id: string;
+  token: string;
+  label?: string;
+  expiresAt?: string;
+  maxUses?: number;
+  usedCount: number;
+  revokedAt?: string;
+  createdAt: string;
+};
+
+export function getEnrollmentTokens(orgId: string, token: string) {
+  return apiFetch<{ tokens: EnrollmentToken[] }>(`/api/v1/enrollment-tokens/${orgId}`, { token });
+}
+
+export function createEnrollmentToken(
+  orgId: string,
+  token: string,
+  body: { label?: string; expiresAt?: string; maxUses?: number },
+) {
+  return apiFetch<EnrollmentToken>(`/api/v1/enrollment-tokens/${orgId}`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export function revokeEnrollmentToken(orgId: string, tokenId: string, token: string) {
+  return apiFetch(`/api/v1/enrollment-tokens/${orgId}/${tokenId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+// --- User Management ---
+
+export function createUser(
+  orgId: string,
+  token: string,
+  body: { email: string; name?: string; role?: string; password?: string },
+) {
+  return apiFetch<{ user: OrgUser }>(`/api/v1/users/${orgId}`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export function updateUser(
+  orgId: string,
+  userId: string,
+  token: string,
+  body: { name?: string; role?: string },
+) {
+  return apiFetch<{ user: OrgUser }>(`/api/v1/users/${orgId}/${userId}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export function deleteUser(orgId: string, userId: string, token: string) {
+  return apiFetch(`/api/v1/users/${orgId}/${userId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function resetUserPassword(orgId: string, userId: string, token: string, password: string) {
+  return apiFetch(`/api/v1/users/${orgId}/${userId}/password`, {
+    method: "PUT",
+    token,
+    body: { password },
+  });
+}
+
 // --- Organizations ---
 
 export type Organization = {

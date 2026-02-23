@@ -6,26 +6,90 @@ import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
 import { getAuth } from "@/lib/auth";
-import { getUsers } from "@/lib/api";
+import { getUsers, createUser, updateUser, deleteUser } from "@/lib/api";
 import type { OrgUser } from "@/lib/api";
 
 export default function UsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState("user");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
+    loadUsers();
+  }, [router]);
+
+  function loadUsers() {
     const auth = getAuth();
     if (!auth) {
       router.replace("/login");
       return;
     }
-
+    setLoading(true);
     getUsers(auth.orgId, auth.accessToken)
       .then((data) => setUsers(data.users))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [router]);
+  }
+
+  async function handleInvite() {
+    const auth = getAuth();
+    if (!auth) return;
+    setInviting(true);
+    setMessage(null);
+    try {
+      await createUser(auth.orgId, auth.accessToken, {
+        email: inviteEmail,
+        name: inviteName || undefined,
+        role: inviteRole,
+        password: invitePassword || undefined,
+      });
+      setMessage({ type: "success", text: `User ${inviteEmail} created.` });
+      setShowInvite(false);
+      setInviteEmail("");
+      setInviteName("");
+      setInviteRole("user");
+      setInvitePassword("");
+      loadUsers();
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to create user" });
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleRoleChange(userId: string, newRole: string) {
+    const auth = getAuth();
+    if (!auth) return;
+    setMessage(null);
+    try {
+      await updateUser(auth.orgId, userId, auth.accessToken, { role: newRole });
+      setMessage({ type: "success", text: "Role updated." });
+      loadUsers();
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to update role" });
+    }
+  }
+
+  async function handleDelete(userId: string, email: string) {
+    const auth = getAuth();
+    if (!auth) return;
+    if (!confirm(`Remove ${email} from the organization? This action cannot be undone.`)) return;
+    setMessage(null);
+    try {
+      await deleteUser(auth.orgId, userId, auth.accessToken);
+      setMessage({ type: "success", text: `User ${email} removed.` });
+      loadUsers();
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to remove user" });
+    }
+  }
 
   function formatDate(iso?: string) {
     if (!iso) return "Never";
@@ -42,14 +106,93 @@ export default function UsersPage() {
     return d.toLocaleDateString();
   }
 
+  const auth = getAuth();
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 p-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">Users</h2>
-          <span className="text-sm text-muted-foreground">{users.length} total</span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">{users.length} total</span>
+            <button
+              onClick={() => setShowInvite(true)}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+            >
+              Invite User
+            </button>
+          </div>
         </div>
+
+        {message && (
+          <div className={`mb-4 p-3 rounded-md text-sm ${message.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
+            {message.text}
+          </div>
+        )}
+
+        {showInvite && (
+          <Card className="mb-6">
+            <CardTitle>Invite User</CardTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div>
+                <label className="text-sm font-medium block mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="user@company.com"
+                  className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Name</label>
+                <input
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Password (optional)</label>
+                <input
+                  type="password"
+                  value={invitePassword}
+                  onChange={(e) => setInvitePassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={handleInvite}
+                disabled={inviting || !inviteEmail}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {inviting ? "Creating..." : "Create User"}
+              </button>
+              <button
+                onClick={() => setShowInvite(false)}
+                className="px-4 py-2 bg-secondary text-foreground rounded-md text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </Card>
+        )}
 
         {loading ? (
           <p className="text-muted-foreground">Loading...</p>
@@ -66,6 +209,7 @@ export default function UsersPage() {
                     <th className="pb-2 font-medium">Role</th>
                     <th className="pb-2 font-medium">Last Seen</th>
                     <th className="pb-2 font-medium">Joined</th>
+                    <th className="pb-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -74,13 +218,29 @@ export default function UsersPage() {
                       <td className="py-3 font-medium">{user.email}</td>
                       <td className="py-3 text-muted-foreground">{user.name ?? "-"}</td>
                       <td className="py-3">
-                        <Badge variant={user.role === "admin" ? "warning" : "default"}>
-                          {user.role}
-                        </Badge>
+                        <select
+                          value={user.role}
+                          onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                          className="bg-secondary px-2 py-1 rounded text-sm border border-border"
+                          disabled={user.id === auth?.userId}
+                        >
+                          <option value="user">user</option>
+                          <option value="admin">admin</option>
+                        </select>
                       </td>
                       <td className="py-3 text-muted-foreground">{formatDate(user.lastSeenAt)}</td>
                       <td className="py-3 text-muted-foreground">
                         {new Date(user.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-3">
+                        {user.id !== auth?.userId && (
+                          <button
+                            onClick={() => handleDelete(user.id, user.email)}
+                            className="text-red-500 hover:text-red-400 text-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
