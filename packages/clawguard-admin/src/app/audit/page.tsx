@@ -53,6 +53,18 @@ export default function AuditPage() {
     loadEvents();
   }, [router, loadEvents]);
 
+  function applyAdminFilter() {
+    setFilterType("admin_action");
+  }
+
+  // Trigger loadEvents when filterType changes to admin_action via the preset button.
+  useEffect(() => {
+    if (filterType === "admin_action") {
+      loadEvents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterType]);
+
   function exportCSV() {
     const header = "ID,Timestamp,User,EventType,Tool,Outcome,Session\n";
     const rows = events.map((e) =>
@@ -125,12 +137,24 @@ export default function AuditPage() {
               className="px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
-          <button
-            onClick={loadEvents}
-            className="mt-3 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
-          >
-            Apply Filters
-          </button>
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={loadEvents}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+            >
+              Apply Filters
+            </button>
+            <button
+              onClick={applyAdminFilter}
+              className={`px-4 py-2 rounded-md text-sm font-medium border ${
+                filterType === "admin_action"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border hover:bg-secondary"
+              }`}
+            >
+              Admin Actions
+            </button>
+          </div>
         </Card>
 
         {/* Events table */}
@@ -162,7 +186,7 @@ export default function AuditPage() {
                       <td className="py-2">{event.eventType}</td>
                       <td className="py-2 font-mono text-xs">{event.toolName ?? "-"}</td>
                       <td className="py-2">
-                        <Badge variant={event.outcome === "allowed" ? "success" : "danger"}>
+                        <Badge variant={event.outcome === "allowed" ? "success" : event.eventType === "admin_action" ? "default" : "danger"}>
                           {event.outcome}
                         </Badge>
                       </td>

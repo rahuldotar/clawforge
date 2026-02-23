@@ -8,6 +8,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { requireAdmin, requireOrg } from "../middleware/auth.js";
 import { enrollmentTokens, users } from "../db/schema.js";
+import { logAdminAction } from "../services/admin-audit.js";
 
 const CreateTokenSchema = z.object({
   label: z.string().optional(),
@@ -61,6 +62,15 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
           createdBy: request.authUser!.userId,
         })
         .returning();
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "enrollment_token_created",
+        resourceType: "enrollment_token",
+        resourceId: created.id,
+        details: { label, maxUses },
+      }).catch(() => {});
 
       return reply.code(201).send({
         id: created.id,
@@ -138,6 +148,15 @@ export async function enrollmentRoutes(app: FastifyInstance): Promise<void> {
       if (!updated) {
         return reply.code(404).send({ error: "Token not found" });
       }
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "enrollment_token_revoked",
+        resourceType: "enrollment_token",
+        resourceId: tokenId,
+        details: { tokenId },
+      }).catch(() => {});
 
       return reply.send({ success: true });
     },

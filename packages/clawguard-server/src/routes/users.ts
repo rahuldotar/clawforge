@@ -8,6 +8,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { requireAdmin, requireOrg } from "../middleware/auth.js";
 import { users } from "../db/schema.js";
+import { logAdminAction } from "../services/admin-audit.js";
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
@@ -105,6 +106,15 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
           createdAt: users.createdAt,
         });
 
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "user_created",
+        resourceType: "user",
+        resourceId: created.id,
+        details: { email, role },
+      }).catch(() => {});
+
       return reply.code(201).send({ user: created });
     },
   );
@@ -175,6 +185,15 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
           createdAt: users.createdAt,
         });
 
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "user_updated",
+        resourceType: "user",
+        resourceId: userId,
+        details: { userId, changes: Object.keys(updates) },
+      }).catch(() => {});
+
       return reply.send({ user: updated });
     },
   );
@@ -223,6 +242,15 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
         .delete(users)
         .where(and(eq(users.id, userId), eq(users.orgId, orgId)));
 
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "user_deleted",
+        resourceType: "user",
+        resourceId: userId,
+        details: { email: target.email },
+      }).catch(() => {});
+
       return reply.send({ success: true });
     },
   );
@@ -265,6 +293,15 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
         .update(users)
         .set({ passwordHash })
         .where(eq(users.id, userId));
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "user_password_reset",
+        resourceType: "user",
+        resourceId: userId,
+        details: { targetUserId: userId },
+      }).catch(() => {});
 
       return reply.send({ success: true });
     },

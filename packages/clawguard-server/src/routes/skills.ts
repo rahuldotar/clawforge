@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin, requireOrg } from "../middleware/auth.js";
 import { SkillReviewService } from "../services/skill-review-service.js";
+import { logAdminAction } from "../services/admin-audit.js";
 
 const SubmitSkillBodySchema = z.object({
   skillName: z.string().min(1),
@@ -118,6 +119,15 @@ export async function skillRoutes(app: FastifyInstance): Promise<void> {
       if (!updated) {
         return reply.code(404).send({ error: "Submission not found" });
       }
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: `skill_${parseResult.data.status.replace("-", "_")}`,
+        resourceType: "skill_submission",
+        resourceId: id,
+        details: { skillName: updated.skillName, reviewNotes: parseResult.data.reviewNotes },
+      }).catch(() => {});
 
       return reply.send(updated);
     },
