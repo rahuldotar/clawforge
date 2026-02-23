@@ -3,11 +3,60 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
-import { requireOrg } from "../middleware/auth.js";
-import { clientHeartbeats, policies } from "../db/schema.js";
+import { eq, desc } from "drizzle-orm";
+import { requireAdmin, requireOrg } from "../middleware/auth.js";
+import { clientHeartbeats, policies, users } from "../db/schema.js";
 
 export async function heartbeatRoutes(app: FastifyInstance): Promise<void> {
+  /**
+   * GET /api/v1/heartbeat/:orgId
+   * List all connected clients for the org (admin only).
+   */
+  app.get<{ Params: { orgId: string } }>(
+    "/api/v1/heartbeat/:orgId",
+    async (request, reply) => {
+      requireAdmin(request, reply);
+      if (reply.sent) return;
+      const { orgId } = request.params;
+      requireOrg(request, reply, orgId);
+      if (reply.sent) return;
+
+      const db = app.db;
+
+      const clients = await db
+        .select({
+          userId: clientHeartbeats.userId,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          lastHeartbeatAt: clientHeartbeats.lastHeartbeatAt,
+          clientVersion: clientHeartbeats.clientVersion,
+        })
+        .from(clientHeartbeats)
+        .innerJoin(users, eq(clientHeartbeats.userId, users.id))
+        .where(eq(clientHeartbeats.orgId, orgId))
+        .orderBy(desc(clientHeartbeats.lastHeartbeatAt));
+
+      // Determine online/offline status (online = heartbeat within last 5 minutes)
+      const now = Date.now();
+      const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+
+      const enriched = clients.map((c) => ({
+        ...c,
+        status: (now - new Date(c.lastHeartbeatAt).getTime()) < ONLINE_THRESHOLD_MS ? "online" : "offline",
+      }));
+
+      return reply.send({
+        clients: enriched,
+        summary: {
+          total: enriched.length,
+          online: enriched.filter((c) => c.status === "online").length,
+          offline: enriched.filter((c) => c.status === "offline").length,
+        },
+      });
+    },
+  );
+
   /**
    * GET /api/v1/heartbeat/:orgId/:userId
    * Client heartbeat – returns kill switch status and policy version.

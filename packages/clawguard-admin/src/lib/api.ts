@@ -260,3 +260,28 @@ export function updateOrganization(
     body,
   });
 }
+
+// --- Connected Clients ---
+
+export type ConnectedClient = {
+  userId: string;
+  email: string;
+  name?: string;
+  role: string;
+  lastHeartbeatAt: string;
+  clientVersion?: string;
+  status: "online" | "offline";
+};
+
+export type ClientsSummary = {
+  total: number;
+  online: number;
+  offline: number;
+};
+
+export function getConnectedClients(orgId: string, token: string) {
+  return apiFetch<{ clients: ConnectedClient[]; summary: ClientsSummary }>(
+    `/api/v1/heartbeat/${orgId}`,
+    { token },
+  );
+}

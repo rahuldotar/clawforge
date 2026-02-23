@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle, StatCard } from "@/components/card";
 import { Badge } from "@/components/badge";
 import { getAuth } from "@/lib/auth";
-import { getPolicy, queryAudit, getPendingSkills, getUsers } from "@/lib/api";
+import { getPolicy, queryAudit, getPendingSkills, getUsers, getConnectedClients } from "@/lib/api";
 import type { EffectivePolicy, AuditEvent, OrgUser } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [userCount, setUserCount] = useState(0);
   const [toolCallsAllowed, setToolCallsAllowed] = useState(0);
   const [toolCallsBlocked, setToolCallsBlocked] = useState(0);
+  const [onlineClients, setOnlineClients] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,11 +31,12 @@ export default function DashboardPage() {
       const auth = getAuth()!;
       const { orgId, accessToken } = auth;
 
-      const [policyData, auditData, skillsData, usersData] = await Promise.allSettled([
+      const [policyData, auditData, skillsData, usersData, clientsData] = await Promise.allSettled([
         getPolicy(orgId, accessToken),
         queryAudit(orgId, accessToken, { limit: "20" }),
         getPendingSkills(orgId, accessToken),
         getUsers(orgId, accessToken),
+        getConnectedClients(orgId, accessToken),
       ]);
 
       if (policyData.status === "fulfilled") setPolicy(policyData.value);
@@ -46,6 +48,7 @@ export default function DashboardPage() {
       }
       if (skillsData.status === "fulfilled") setPendingCount(skillsData.value.submissions.length);
       if (usersData.status === "fulfilled") setUserCount(usersData.value.users.length);
+      if (clientsData.status === "fulfilled") setOnlineClients(clientsData.value.summary.online);
 
       setLoading(false);
     }
@@ -64,8 +67,9 @@ export default function DashboardPage() {
         ) : (
           <>
             {/* Stats row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
               <StatCard label="Active Users" value={userCount} />
+              <StatCard label="Clients Online" value={onlineClients} />
               <StatCard label="Tool Calls Allowed" value={toolCallsAllowed} variant="success" />
               <StatCard label="Tool Calls Blocked" value={toolCallsBlocked} variant="danger" />
               <StatCard label="Pending Reviews" value={pendingCount} variant="warning" />
