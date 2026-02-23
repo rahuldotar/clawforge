@@ -185,3 +185,45 @@ export function revokeEnrollmentToken(orgId: string, tokenId: string, token: str
     token,
   });
 }
+
+// --- User Management ---
+
+export function createUser(
+  orgId: string,
+  token: string,
+  body: { email: string; name?: string; role?: string; password?: string },
+) {
+  return apiFetch<{ user: OrgUser }>(`/api/v1/users/${orgId}`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
+export function updateUser(
+  orgId: string,
+  userId: string,
+  token: string,
+  body: { name?: string; role?: string },
+) {
+  return apiFetch<{ user: OrgUser }>(`/api/v1/users/${orgId}/${userId}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export function deleteUser(orgId: string, userId: string, token: string) {
+  return apiFetch(`/api/v1/users/${orgId}/${userId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function resetUserPassword(orgId: string, userId: string, token: string, password: string) {
+  return apiFetch(`/api/v1/users/${orgId}/${userId}/password`, {
+    method: "PUT",
+    token,
+    body: { password },
+  });
+}
