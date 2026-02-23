@@ -117,12 +117,22 @@ export type SkillSubmission = {
   createdAt: string;
 };
 
+export type ApprovedSkill = {
+  id: string;
+  skillName: string;
+  skillKey: string;
+  scope: string;
+  version: number;
+  revokedAt?: string;
+  createdAt: string;
+};
+
 export function getPendingSkills(orgId: string, token: string) {
   return apiFetch<{ submissions: SkillSubmission[] }>(`/api/v1/skills/${orgId}/review`, { token });
 }
 
 export function getApprovedSkills(orgId: string, token: string) {
-  return apiFetch<{ skills: Array<{ skillName: string; skillKey: string; scope: string }> }>(
+  return apiFetch<{ skills: ApprovedSkill[] }>(
     `/api/v1/skills/${orgId}/approved`,
     { token },
   );
@@ -139,6 +149,24 @@ export function reviewSkill(
     token,
     body,
   });
+}
+
+export function revokeSkillApproval(orgId: string, skillId: string, token: string) {
+  return apiFetch<{ success: boolean }>(`/api/v1/skills/${orgId}/approved/${skillId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function resubmitSkill(orgId: string, submissionId: string, token: string) {
+  return apiFetch(`/api/v1/skills/${orgId}/review/${submissionId}/resubmit`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function getSkillHistory(orgId: string, token: string) {
+  return apiFetch<{ skills: ApprovedSkill[] }>(`/api/v1/skills/${orgId}/approved/history`, { token });
 }
 
 // --- Audit ---

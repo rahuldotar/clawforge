@@ -134,6 +134,47 @@ export async function skillRoutes(app: FastifyInstance): Promise<void> {
   );
 
   /**
+   * POST /api/v1/skills/:orgId/review/:id/resubmit
+   * Re-submit a skill for review (admin only).
+   */
+  app.post<{ Params: { orgId: string; id: string } }>(
+    "/api/v1/skills/:orgId/review/:id/resubmit",
+    async (request, reply) => {
+      requireAdmin(request, reply);
+      if (reply.sent) return;
+      const { orgId, id } = request.params;
+      requireOrg(request, reply, orgId);
+      if (reply.sent) return;
+
+      const updated = await skillService.resubmitForReview(id);
+      if (!updated) {
+        return reply.code(404).send({ error: "Submission not found" });
+      }
+
+      return reply.send(updated);
+    },
+  );
+
+  /**
+   * GET /api/v1/skills/:orgId/approved/history
+   * Full approval history including revoked (admin only).
+   * NOTE: This must be registered BEFORE the /approved catch-all route.
+   */
+  app.get<{ Params: { orgId: string } }>(
+    "/api/v1/skills/:orgId/approved/history",
+    async (request, reply) => {
+      requireAdmin(request, reply);
+      if (reply.sent) return;
+      const { orgId } = request.params;
+      requireOrg(request, reply, orgId);
+      if (reply.sent) return;
+
+      const skills = await skillService.listAllApproved(orgId);
+      return reply.send({ skills });
+    },
+  );
+
+  /**
    * GET /api/v1/skills/:orgId/approved
    * List approved skills for the org.
    */
@@ -146,6 +187,28 @@ export async function skillRoutes(app: FastifyInstance): Promise<void> {
 
       const approved = await skillService.listApproved(orgId);
       return reply.send({ skills: approved });
+    },
+  );
+
+  /**
+   * DELETE /api/v1/skills/:orgId/approved/:skillId
+   * Revoke a skill approval (admin only).
+   */
+  app.delete<{ Params: { orgId: string; skillId: string } }>(
+    "/api/v1/skills/:orgId/approved/:skillId",
+    async (request, reply) => {
+      requireAdmin(request, reply);
+      if (reply.sent) return;
+      const { orgId, skillId } = request.params;
+      requireOrg(request, reply, orgId);
+      if (reply.sent) return;
+
+      const revoked = await skillService.revokeApproval(skillId, request.authUser!.userId);
+      if (!revoked) {
+        return reply.code(404).send({ error: "Approved skill not found or already revoked" });
+      }
+
+      return reply.send({ success: true, skill: revoked });
     },
   );
 }

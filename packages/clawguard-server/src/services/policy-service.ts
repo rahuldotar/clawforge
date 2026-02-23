@@ -2,7 +2,7 @@
  * Policy service for managing org policies.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { policies, approvedSkills } from "../db/schema.js";
 import type * as schema from "../db/schema.js";
@@ -39,11 +39,11 @@ export class PolicyService {
       return null;
     }
 
-    // Fetch approved skills (org-wide + user-specific).
+    // Fetch approved skills (org-wide + user-specific), excluding revoked.
     const approved = await this.db
       .select()
       .from(approvedSkills)
-      .where(eq(approvedSkills.orgId, orgId));
+      .where(and(eq(approvedSkills.orgId, orgId), isNull(approvedSkills.revokedAt)));
 
     const filteredApproved = approved.filter(
       (s) => s.scope === "org" || s.approvedForUser === userId,

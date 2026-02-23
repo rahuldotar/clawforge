@@ -152,6 +152,9 @@ export const approvedSkills = pgTable(
       .notNull()
       .default("org"),
     approvedForUser: uuid("approved_for_user").references(() => users.id),
+    version: integer("version").notNull().default(1),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
