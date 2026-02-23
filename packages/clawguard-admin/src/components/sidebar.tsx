@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "grid" },
+  { href: "/dashboard/clients", label: "Clients", icon: "monitor" },
   { href: "/policies", label: "Policy Editor", icon: "shield" },
   { href: "/skills", label: "Skill Review", icon: "check-square" },
   { href: "/audit", label: "Audit Logs", icon: "file-text" },
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
 
 const ICONS: Record<string, string> = {
   grid: "\u25A6",
+  monitor: "\u25C9",
   shield: "\u26E8",
   "check-square": "\u2611",
   "file-text": "\u2637",
@@ -36,7 +38,7 @@ export function Sidebar() {
       </div>
       <nav className="space-y-1 flex-1">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname.startsWith(item.href);
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
             <Link
               key={item.href}
