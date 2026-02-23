@@ -1,10 +1,11 @@
 /**
- * Auth routes – SSO token exchange.
+ * Auth routes – SSO token exchange, email/password login, password change.
  */
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { users, organizations } from "../db/schema.js";
 import { exchangeCodeAtIdp, verifyIdToken } from "../services/oidc-service.js";
 
@@ -189,6 +190,137 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(401).send({ error: "Invalid or expired refresh token" });
       }
     }
+  });
+
+  /**
+   * POST /api/v1/auth/login
+   * Email/password login.
+   */
+  app.post("/api/v1/auth/login", async (request, reply) => {
+    const loginSchema = z.object({
+      email: z.string().email(),
+      password: z.string().min(1),
+      orgId: z.string().uuid(),
+    });
+
+    const parseResult = loginSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.code(400).send({
+        error: "Invalid request body",
+        details: parseResult.error.issues,
+      });
+    }
+
+    const { email, password, orgId } = parseResult.data;
+    const db = app.db;
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.orgId, orgId), eq(users.email, email)))
+      .limit(1);
+
+    if (!user || !user.passwordHash) {
+      return reply.code(401).send({ error: "Invalid email or password" });
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return reply.code(401).send({ error: "Invalid email or password" });
+    }
+
+    // Update last seen
+    await db
+      .update(users)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(users.id, user.id));
+
+    // Issue tokens
+    const accessToken = app.jwt.sign(
+      { userId: user.id, orgId, email: user.email, role: user.role },
+      { expiresIn: "1h" },
+    );
+    const refreshToken = app.jwt.sign(
+      { userId: user.id, orgId, email: user.email, role: user.role, type: "refresh" },
+      { expiresIn: "30d" },
+    );
+
+    return reply.send({
+      accessToken,
+      refreshToken,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      userId: user.id,
+      orgId,
+      email: user.email,
+      roles: [user.role],
+    });
+  });
+
+  /**
+   * GET /api/v1/auth/mode
+   * Returns available authentication methods.
+   */
+  app.get("/api/v1/auth/mode", async (_request, reply) => {
+    // For now, always return that email/password is available
+    return reply.send({ methods: ["password"] });
+  });
+
+  /**
+   * POST /api/v1/auth/change-password
+   * Self-service password change for authenticated users.
+   */
+  app.post("/api/v1/auth/change-password", async (request, reply) => {
+    if (!request.authUser) {
+      return reply.code(401).send({ error: "Authentication required" });
+    }
+
+    const schema = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(6),
+    });
+
+    const parseResult = schema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.code(400).send({
+        error: "Invalid request body",
+        details: parseResult.error.issues,
+      });
+    }
+
+    const { currentPassword, newPassword } = parseResult.data;
+    const userId = request.authUser.userId;
+    const db = app.db;
+
+    // Fetch user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return reply.code(404).send({ error: "User not found" });
+    }
+
+    // If user has no password (SSO-only), they can't use this endpoint
+    if (!user.passwordHash) {
+      return reply.code(400).send({ error: "Cannot change password for SSO-only accounts" });
+    }
+
+    // Verify current password
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      return reply.code(401).send({ error: "Current password is incorrect" });
+    }
+
+    // Hash and save new password
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await db
+      .update(users)
+      .set({ passwordHash: newHash })
+      .where(eq(users.id, userId));
+
+    return reply.send({ success: true });
   });
 }
 

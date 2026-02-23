@@ -32,6 +32,31 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// --- Auth ---
+
+export function login(email: string, password: string, orgId: string) {
+  return apiFetch<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+    userId: string;
+    orgId: string;
+    email: string;
+    roles: string[];
+  }>("/api/v1/auth/login", {
+    method: "POST",
+    body: { email, password, orgId },
+  });
+}
+
+export function changePassword(token: string, body: { currentPassword: string; newPassword: string }) {
+  return apiFetch<{ success: boolean }>("/api/v1/auth/change-password", {
+    method: "POST",
+    token,
+    body,
+  });
+}
+
 // --- Policies ---
 
 export type EffectivePolicy = {

@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
 import { getAuth } from "@/lib/auth";
-import { getOrganization, updateOrganization } from "@/lib/api";
+import { getOrganization, updateOrganization, changePassword } from "@/lib/api";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -20,6 +20,13 @@ export default function SettingsPage() {
   const [orgId, setOrgId] = useState("");
   const [createdAt, setCreatedAt] = useState("");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Change password state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     const auth = getAuth();
@@ -75,6 +82,44 @@ export default function SettingsPage() {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to save settings" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordMessage(null);
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ type: "error", text: "New passwords do not match." });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordMessage({ type: "error", text: "New password must be at least 6 characters." });
+      return;
+    }
+
+    const auth = getAuth();
+    if (!auth) return;
+
+    setChangingPassword(true);
+
+    try {
+      await changePassword(auth.accessToken, {
+        currentPassword,
+        newPassword,
+      });
+      setPasswordMessage({ type: "success", text: "Password changed successfully." });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setPasswordMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to change password",
+      });
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -171,6 +216,63 @@ export default function SettingsPage() {
             >
               {saving ? "Saving..." : "Save Settings"}
             </button>
+
+            <Card>
+              <CardTitle>Change Password</CardTitle>
+              <form onSubmit={handleChangePassword} className="mt-4 space-y-4 max-w-md">
+                {passwordMessage && (
+                  <div className={`p-3 rounded-md text-sm ${passwordMessage.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
+                    {passwordMessage.text}
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium block mb-1">Current Password</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                    placeholder="Enter current password"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium block mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                    placeholder="Enter new password (min 6 characters)"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium block mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                    placeholder="Confirm new password"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+                  className="px-6 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                >
+                  {changingPassword ? "Changing..." : "Change Password"}
+                </button>
+              </form>
+            </Card>
           </div>
         )}
       </main>
