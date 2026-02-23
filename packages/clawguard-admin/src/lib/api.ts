@@ -227,3 +227,36 @@ export function resetUserPassword(orgId: string, userId: string, token: string, 
     body: { password },
   });
 }
+
+// --- Organizations ---
+
+export type Organization = {
+  id: string;
+  name: string;
+  ssoConfig?: {
+    issuerUrl: string;
+    clientId: string;
+    audience?: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function getOrganization(orgId: string, token: string) {
+  return apiFetch<{ organization: Organization }>(`/api/v1/organizations/${orgId}`, { token });
+}
+
+export function updateOrganization(
+  orgId: string,
+  token: string,
+  body: {
+    name?: string;
+    ssoConfig?: { issuerUrl: string; clientId: string; audience?: string } | null;
+  },
+) {
+  return apiFetch<{ organization: Organization }>(`/api/v1/organizations/${orgId}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}

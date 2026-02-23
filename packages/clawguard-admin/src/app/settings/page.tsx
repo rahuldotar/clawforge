@@ -1,0 +1,179 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Sidebar } from "@/components/sidebar";
+import { Card, CardTitle } from "@/components/card";
+import { Badge } from "@/components/badge";
+import { getAuth } from "@/lib/auth";
+import { getOrganization, updateOrganization } from "@/lib/api";
+
+export default function SettingsPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [orgName, setOrgName] = useState("");
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [issuerUrl, setIssuerUrl] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [audience, setAudience] = useState("");
+  const [orgId, setOrgId] = useState("");
+  const [createdAt, setCreatedAt] = useState("");
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    const auth = getAuth();
+    if (!auth) {
+      router.replace("/login");
+      return;
+    }
+    setOrgId(auth.orgId);
+
+    getOrganization(auth.orgId, auth.accessToken)
+      .then((data) => {
+        const org = data.organization;
+        setOrgName(org.name);
+        setCreatedAt(org.createdAt);
+        if (org.ssoConfig) {
+          setSsoEnabled(true);
+          setIssuerUrl(org.ssoConfig.issuerUrl);
+          setClientId(org.ssoConfig.clientId);
+          setAudience(org.ssoConfig.audience ?? "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [router]);
+
+  async function handleSave() {
+    const auth = getAuth();
+    if (!auth) return;
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const body: {
+        name?: string;
+        ssoConfig?: { issuerUrl: string; clientId: string; audience?: string } | null;
+      } = {};
+
+      body.name = orgName;
+
+      if (ssoEnabled && issuerUrl && clientId) {
+        body.ssoConfig = {
+          issuerUrl,
+          clientId,
+          audience: audience || undefined,
+        };
+      } else if (!ssoEnabled) {
+        body.ssoConfig = null;
+      }
+
+      await updateOrganization(auth.orgId, auth.accessToken, body);
+      setMessage({ type: "success", text: "Settings saved." });
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to save settings" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <main className="flex-1 p-8">
+        <h2 className="text-2xl font-bold mb-6">Organization Settings</h2>
+
+        {message && (
+          <div className={`mb-4 p-3 rounded-md text-sm ${message.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
+            {message.text}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-muted-foreground">Loading...</p>
+        ) : (
+          <div className="space-y-6">
+            <Card>
+              <CardTitle>General</CardTitle>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="text-sm font-medium block mb-1">Organization Name</label>
+                  <input
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    className="w-full max-w-md px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                  />
+                </div>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span>Org ID: <code className="font-mono">{orgId}</code></span>
+                  <span>Created: {createdAt ? new Date(createdAt).toLocaleDateString() : "-"}</span>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center justify-between">
+                <CardTitle>SSO / OIDC Configuration</CardTitle>
+                <Badge variant={ssoEnabled ? "success" : "default"}>
+                  {ssoEnabled ? "Configured" : "Not Configured"}
+                </Badge>
+              </div>
+              <div className="mt-4 space-y-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={ssoEnabled}
+                    onChange={(e) => setSsoEnabled(e.target.checked)}
+                    className="rounded"
+                  />
+                  Enable SSO (OIDC)
+                </label>
+
+                {ssoEnabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-1">Issuer URL *</label>
+                      <input
+                        value={issuerUrl}
+                        onChange={(e) => setIssuerUrl(e.target.value)}
+                        placeholder="https://your-org.okta.com"
+                        className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1">Client ID *</label>
+                      <input
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        placeholder="0oa1234567890"
+                        className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1">Audience (optional)</label>
+                      <input
+                        value={audience}
+                        onChange={(e) => setAudience(e.target.value)}
+                        placeholder="api://clawguard"
+                        className="w-full px-3 py-2 bg-secondary rounded-md text-sm border border-border"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <button
+              onClick={handleSave}
+              disabled={saving || !orgName}
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save Settings"}
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

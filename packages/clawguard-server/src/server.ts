@@ -16,6 +16,7 @@ import { auditRoutes } from "./routes/audit.js";
 import { heartbeatRoutes } from "./routes/heartbeat.js";
 import { userRoutes } from "./routes/users.js";
 import { enrollmentRoutes } from "./routes/enrollment.js";
+import { organizationRoutes } from "./routes/organizations.js";
 
 // Extend Fastify instance to include db.
 declare module "fastify" {
@@ -71,6 +72,7 @@ export async function createServer(config: ServerConfig) {
   await app.register(heartbeatRoutes);
   await app.register(userRoutes);
   await app.register(enrollmentRoutes);
+  await app.register(organizationRoutes);
 
   return app;
 }

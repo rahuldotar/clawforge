@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/kill-switch", label: "Kill Switch", icon: "power" },
   { href: "/users", label: "Users", icon: "users" },
   { href: "/enrollment", label: "Enrollment", icon: "key" },
+  { href: "/settings", label: "Settings", icon: "gear" },
 ];
 
 const ICONS: Record<string, string> = {
@@ -21,6 +22,7 @@ const ICONS: Record<string, string> = {
   power: "\u23FB",
   users: "\u263A",
   key: "\u2386",
+  gear: "\u2699",
 };
 
 export function Sidebar() {
