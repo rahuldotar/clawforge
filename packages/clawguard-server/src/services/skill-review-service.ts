@@ -2,7 +2,7 @@
  * Skill review service for managing skill submissions and approvals.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { skillSubmissions, approvedSkills } from "../db/schema.js";
 import type * as schema from "../db/schema.js";
@@ -109,6 +109,39 @@ export class SkillReviewService {
     return this.db
       .select()
       .from(approvedSkills)
-      .where(eq(approvedSkills.orgId, orgId));
+      .where(and(eq(approvedSkills.orgId, orgId), isNull(approvedSkills.revokedAt)));
+  }
+
+  async revokeApproval(skillId: string, revokedBy: string) {
+    const [revoked] = await this.db
+      .update(approvedSkills)
+      .set({ revokedAt: new Date(), revokedBy })
+      .where(and(eq(approvedSkills.id, skillId), isNull(approvedSkills.revokedAt)))
+      .returning();
+    return revoked ?? null;
+  }
+
+  async listAllApproved(orgId: string) {
+    // Including revoked, for full history
+    return this.db
+      .select()
+      .from(approvedSkills)
+      .where(eq(approvedSkills.orgId, orgId))
+      .orderBy(approvedSkills.createdAt);
+  }
+
+  async resubmitForReview(submissionId: string) {
+    // Reset a rejected/approved submission back to pending for re-review
+    const [updated] = await this.db
+      .update(skillSubmissions)
+      .set({
+        status: "pending",
+        reviewedBy: null,
+        reviewNotes: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(skillSubmissions.id, submissionId))
+      .returning();
+    return updated ?? null;
   }
 }

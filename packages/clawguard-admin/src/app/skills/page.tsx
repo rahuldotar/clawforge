@@ -6,17 +6,27 @@ import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
 import { getAuth } from "@/lib/auth";
-import { getPendingSkills, reviewSkill, getApprovedSkills } from "@/lib/api";
-import type { SkillSubmission } from "@/lib/api";
+import {
+  getPendingSkills,
+  reviewSkill,
+  getApprovedSkills,
+  revokeSkillApproval,
+  resubmitSkill,
+  getSkillHistory,
+} from "@/lib/api";
+import type { SkillSubmission, ApprovedSkill } from "@/lib/api";
 
 export default function SkillsPage() {
   const router = useRouter();
   const [pending, setPending] = useState<SkillSubmission[]>([]);
-  const [approved, setApproved] = useState<Array<{ skillName: string; skillKey: string; scope: string }>>([]);
+  const [approved, setApproved] = useState<ApprovedSkill[]>([]);
+  const [history, setHistory] = useState<ApprovedSkill[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [resubmittingId, setResubmittingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"pending" | "approved">("pending");
+  const [tab, setTab] = useState<"pending" | "approved" | "history">("pending");
 
   useEffect(() => {
     const auth = getAuth();
@@ -29,12 +39,14 @@ export default function SkillsPage() {
 
   async function loadData() {
     const auth = getAuth()!;
-    const [pendingRes, approvedRes] = await Promise.allSettled([
+    const [pendingRes, approvedRes, historyRes] = await Promise.allSettled([
       getPendingSkills(auth.orgId, auth.accessToken),
       getApprovedSkills(auth.orgId, auth.accessToken),
+      getSkillHistory(auth.orgId, auth.accessToken),
     ]);
     if (pendingRes.status === "fulfilled") setPending(pendingRes.value.submissions);
     if (approvedRes.status === "fulfilled") setApproved(approvedRes.value.skills);
+    if (historyRes.status === "fulfilled") setHistory(historyRes.value.skills);
     setLoading(false);
   }
 
@@ -48,6 +60,32 @@ export default function SkillsPage() {
       await loadData();
     } finally {
       setReviewingId(null);
+    }
+  }
+
+  async function handleRevoke(skillId: string) {
+    const auth = getAuth();
+    if (!auth) return;
+
+    setRevokingId(skillId);
+    try {
+      await revokeSkillApproval(auth.orgId, skillId, auth.accessToken);
+      await loadData();
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  async function handleResubmit(submissionId: string) {
+    const auth = getAuth();
+    if (!auth) return;
+
+    setResubmittingId(submissionId);
+    try {
+      await resubmitSkill(auth.orgId, submissionId, auth.accessToken);
+      await loadData();
+    } finally {
+      setResubmittingId(null);
     }
   }
 
@@ -111,6 +149,16 @@ export default function SkillsPage() {
             }`}
           >
             Approved ({approved.length})
+          </button>
+          <button
+            onClick={() => setTab("history")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === "history"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            History ({history.length})
           </button>
         </div>
 
@@ -184,7 +232,7 @@ export default function SkillsPage() {
               ))}
             </div>
           )
-        ) : (
+        ) : tab === "approved" ? (
           approved.length === 0 ? (
             <p className="text-muted-foreground">No approved skills.</p>
           ) : (
@@ -195,17 +243,81 @@ export default function SkillsPage() {
                     <th className="pb-2 font-medium">Skill Name</th>
                     <th className="pb-2 font-medium">Key</th>
                     <th className="pb-2 font-medium">Scope</th>
+                    <th className="pb-2 font-medium">Version</th>
+                    <th className="pb-2 font-medium">Status</th>
+                    <th className="pb-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {approved.map((skill, i) => (
-                    <tr key={i} className="border-b border-border last:border-0">
+                  {approved.map((skill) => (
+                    <tr key={skill.id} className="border-b border-border last:border-0">
                       <td className="py-2 font-medium">{skill.skillName}</td>
                       <td className="py-2 font-mono text-xs text-muted-foreground">{skill.skillKey}</td>
                       <td className="py-2">
                         <Badge variant={skill.scope === "org" ? "success" : "info"}>
                           {skill.scope}
                         </Badge>
+                      </td>
+                      <td className="py-2 text-muted-foreground">v{skill.version}</td>
+                      <td className="py-2">
+                        <Badge variant="success">Active</Badge>
+                      </td>
+                      <td className="py-2">
+                        <button
+                          onClick={() => handleRevoke(skill.id)}
+                          disabled={revokingId === skill.id}
+                          className="px-3 py-1 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {revokingId === skill.id ? "Revoking..." : "Revoke"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )
+        ) : (
+          /* History tab */
+          history.length === 0 ? (
+            <p className="text-muted-foreground">No skill approval history.</p>
+          ) : (
+            <Card>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="pb-2 font-medium">Skill Name</th>
+                    <th className="pb-2 font-medium">Key</th>
+                    <th className="pb-2 font-medium">Scope</th>
+                    <th className="pb-2 font-medium">Version</th>
+                    <th className="pb-2 font-medium">Status</th>
+                    <th className="pb-2 font-medium">Approved</th>
+                    <th className="pb-2 font-medium">Revoked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((skill) => (
+                    <tr key={skill.id} className="border-b border-border last:border-0">
+                      <td className="py-2 font-medium">{skill.skillName}</td>
+                      <td className="py-2 font-mono text-xs text-muted-foreground">{skill.skillKey}</td>
+                      <td className="py-2">
+                        <Badge variant={skill.scope === "org" ? "success" : "info"}>
+                          {skill.scope}
+                        </Badge>
+                      </td>
+                      <td className="py-2 text-muted-foreground">v{skill.version}</td>
+                      <td className="py-2">
+                        {skill.revokedAt ? (
+                          <Badge variant="danger">Revoked</Badge>
+                        ) : (
+                          <Badge variant="success">Active</Badge>
+                        )}
+                      </td>
+                      <td className="py-2 text-xs text-muted-foreground">
+                        {new Date(skill.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-2 text-xs text-muted-foreground">
+                        {skill.revokedAt ? new Date(skill.revokedAt).toLocaleDateString() : "—"}
                       </td>
                     </tr>
                   ))}
