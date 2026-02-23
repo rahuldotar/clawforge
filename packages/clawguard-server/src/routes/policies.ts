@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin, requireOrg } from "../middleware/auth.js";
 import { PolicyService } from "../services/policy-service.js";
+import { logAdminAction } from "../services/admin-audit.js";
 
 const UpdatePolicyBodySchema = z.object({
   toolsConfig: z
@@ -104,6 +105,16 @@ export async function policyRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const updated = await policyService.upsertOrgPolicy(orgId, parseResult.data);
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "policy_updated",
+        resourceType: "policy",
+        resourceId: orgId,
+        details: { fields: Object.keys(parseResult.data) },
+      }).catch(() => {});
+
       return reply.send(updated);
     },
   );
@@ -134,6 +145,16 @@ export async function policyRoutes(app: FastifyInstance): Promise<void> {
         parseResult.data.active,
         parseResult.data.message,
       );
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: parseResult.data.active ? "kill_switch_activated" : "kill_switch_deactivated",
+        resourceType: "policy",
+        resourceId: orgId,
+        details: { message: parseResult.data.message },
+      }).catch(() => {});
+
       return reply.send(updated);
     },
   );

@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { requireAdmin, requireOrg } from "../middleware/auth.js";
 import { organizations } from "../db/schema.js";
+import { logAdminAction } from "../services/admin-audit.js";
 
 const UpdateOrgSchema = z.object({
   name: z.string().min(1).optional(),
@@ -113,6 +114,15 @@ export async function organizationRoutes(app: FastifyInstance): Promise<void> {
       if (!updated) {
         return reply.code(404).send({ error: "Organization not found" });
       }
+
+      logAdminAction(app.db, {
+        orgId,
+        userId: request.authUser!.userId,
+        action: "organization_updated",
+        resourceType: "organization",
+        resourceId: orgId,
+        details: { fields: Object.keys(updates) },
+      }).catch(() => {});
 
       return reply.send({ organization: updated });
     },
