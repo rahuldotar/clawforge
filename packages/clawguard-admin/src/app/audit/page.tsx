@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
+import { CardSkeleton } from "@/components/skeleton";
+import { useToast } from "@/components/toast";
 import { getAuth } from "@/lib/auth";
 import { queryAudit, deleteAuditRetention } from "@/lib/api";
 import type { AuditEvent } from "@/lib/api";
 
 export default function AuditPage() {
   const router = useRouter();
+  const toast = useToast();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -21,7 +24,6 @@ export default function AuditPage() {
   // Retention
   const [retentionDays, setRetentionDays] = useState(90);
   const [purging, setPurging] = useState(false);
-  const [purgeResult, setPurgeResult] = useState<{ deleted: number; cutoffDate: string } | null>(null);
 
   // Filters
   const [filterUser, setFilterUser] = useState("");
@@ -105,14 +107,14 @@ export default function AuditPage() {
     if (!auth) return;
 
     setPurging(true);
-    setPurgeResult(null);
     try {
       const result = await deleteAuditRetention(auth.orgId, auth.accessToken, retentionDays);
-      setPurgeResult(result);
-      // Reload events after purge
+      toast.success(
+        `Deleted ${result.deleted.toLocaleString()} events older than ${new Date(result.cutoffDate).toLocaleDateString()}.`,
+      );
       await loadEvents();
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Purge failed");
     }
     setPurging(false);
   }
@@ -134,7 +136,7 @@ export default function AuditPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">Audit Logs</h2>
           <button
@@ -212,7 +214,9 @@ export default function AuditPage() {
         {/* Events table */}
         <Card className="mb-6">
           {loading ? (
-            <p className="text-muted-foreground">Loading...</p>
+            <div className="space-y-3">
+              <CardSkeleton />
+            </div>
           ) : events.length === 0 ? (
             <p className="text-muted-foreground">No audit events found.</p>
           ) : (
@@ -299,7 +303,7 @@ export default function AuditPage() {
           <p className="text-sm text-muted-foreground mb-4">
             Purge audit events older than a specified number of days. This action is irreversible.
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <label className="text-sm font-medium">Delete events older than</label>
             <input
               type="number"
@@ -318,12 +322,6 @@ export default function AuditPage() {
               {purging ? "Purging..." : "Purge Old Events"}
             </button>
           </div>
-          {purgeResult && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              Deleted {purgeResult.deleted.toLocaleString()} events older than{" "}
-              {new Date(purgeResult.cutoffDate).toLocaleDateString()}.
-            </p>
-          )}
         </Card>
       </main>
     </div>

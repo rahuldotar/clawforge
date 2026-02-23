@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
+import { CardSkeleton } from "@/components/skeleton";
+import { useToast } from "@/components/toast";
 import { getAuth } from "@/lib/auth";
 import {
   getPendingSkills,
@@ -18,6 +20,7 @@ import type { SkillSubmission, ApprovedSkill } from "@/lib/api";
 
 export default function SkillsPage() {
   const router = useRouter();
+  const toast = useToast();
   const [pending, setPending] = useState<SkillSubmission[]>([]);
   const [approved, setApproved] = useState<ApprovedSkill[]>([]);
   const [history, setHistory] = useState<ApprovedSkill[]>([]);
@@ -57,7 +60,10 @@ export default function SkillsPage() {
     setReviewingId(id);
     try {
       await reviewSkill(auth.orgId, id, auth.accessToken, { status });
+      toast.success(`Skill ${status === "rejected" ? "rejected" : "approved"}.`);
       await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Review failed");
     } finally {
       setReviewingId(null);
     }
@@ -70,7 +76,10 @@ export default function SkillsPage() {
     setRevokingId(skillId);
     try {
       await revokeSkillApproval(auth.orgId, skillId, auth.accessToken);
+      toast.success("Skill approval revoked.");
       await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Revoke failed");
     } finally {
       setRevokingId(null);
     }
@@ -83,7 +92,10 @@ export default function SkillsPage() {
     setResubmittingId(submissionId);
     try {
       await resubmitSkill(auth.orgId, submissionId, auth.accessToken);
+      toast.success("Skill resubmitted for review.");
       await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Resubmit failed");
     } finally {
       setResubmittingId(null);
     }
@@ -125,7 +137,7 @@ export default function SkillsPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <h2 className="text-2xl font-bold mb-6">Skill Review</h2>
 
         {/* Tabs */}
@@ -163,7 +175,10 @@ export default function SkillsPage() {
         </div>
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="space-y-4">
+            <CardSkeleton />
+            <CardSkeleton />
+          </div>
         ) : tab === "pending" ? (
           pending.length === 0 ? (
             <p className="text-muted-foreground">No pending skill submissions.</p>
@@ -171,7 +186,7 @@ export default function SkillsPage() {
             <div className="space-y-4">
               {pending.map((submission) => (
                 <Card key={submission.id}>
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
                     <div>
                       <h3 className="font-semibold text-base">{submission.skillName}</h3>
                       {submission.skillKey && (
@@ -181,7 +196,7 @@ export default function SkillsPage() {
                         Submitted {new Date(submission.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => setExpandedId(expandedId === submission.id ? null : submission.id)}
                         className="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-secondary"
@@ -237,44 +252,46 @@ export default function SkillsPage() {
             <p className="text-muted-foreground">No approved skills.</p>
           ) : (
             <Card>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="pb-2 font-medium">Skill Name</th>
-                    <th className="pb-2 font-medium">Key</th>
-                    <th className="pb-2 font-medium">Scope</th>
-                    <th className="pb-2 font-medium">Version</th>
-                    <th className="pb-2 font-medium">Status</th>
-                    <th className="pb-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {approved.map((skill) => (
-                    <tr key={skill.id} className="border-b border-border last:border-0">
-                      <td className="py-2 font-medium">{skill.skillName}</td>
-                      <td className="py-2 font-mono text-xs text-muted-foreground">{skill.skillKey}</td>
-                      <td className="py-2">
-                        <Badge variant={skill.scope === "org" ? "success" : "info"}>
-                          {skill.scope}
-                        </Badge>
-                      </td>
-                      <td className="py-2 text-muted-foreground">v{skill.version}</td>
-                      <td className="py-2">
-                        <Badge variant="success">Active</Badge>
-                      </td>
-                      <td className="py-2">
-                        <button
-                          onClick={() => handleRevoke(skill.id)}
-                          disabled={revokingId === skill.id}
-                          className="px-3 py-1 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-                        >
-                          {revokingId === skill.id ? "Revoking..." : "Revoke"}
-                        </button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="pb-2 font-medium">Skill Name</th>
+                      <th className="pb-2 font-medium">Key</th>
+                      <th className="pb-2 font-medium">Scope</th>
+                      <th className="pb-2 font-medium">Version</th>
+                      <th className="pb-2 font-medium">Status</th>
+                      <th className="pb-2 font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {approved.map((skill) => (
+                      <tr key={skill.id} className="border-b border-border last:border-0">
+                        <td className="py-2 font-medium">{skill.skillName}</td>
+                        <td className="py-2 font-mono text-xs text-muted-foreground">{skill.skillKey}</td>
+                        <td className="py-2">
+                          <Badge variant={skill.scope === "org" ? "success" : "info"}>
+                            {skill.scope}
+                          </Badge>
+                        </td>
+                        <td className="py-2 text-muted-foreground">v{skill.version}</td>
+                        <td className="py-2">
+                          <Badge variant="success">Active</Badge>
+                        </td>
+                        <td className="py-2">
+                          <button
+                            onClick={() => handleRevoke(skill.id)}
+                            disabled={revokingId === skill.id}
+                            className="px-3 py-1 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {revokingId === skill.id ? "Revoking..." : "Revoke"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           )
         ) : (
@@ -283,46 +300,48 @@ export default function SkillsPage() {
             <p className="text-muted-foreground">No skill approval history.</p>
           ) : (
             <Card>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="pb-2 font-medium">Skill Name</th>
-                    <th className="pb-2 font-medium">Key</th>
-                    <th className="pb-2 font-medium">Scope</th>
-                    <th className="pb-2 font-medium">Version</th>
-                    <th className="pb-2 font-medium">Status</th>
-                    <th className="pb-2 font-medium">Approved</th>
-                    <th className="pb-2 font-medium">Revoked</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((skill) => (
-                    <tr key={skill.id} className="border-b border-border last:border-0">
-                      <td className="py-2 font-medium">{skill.skillName}</td>
-                      <td className="py-2 font-mono text-xs text-muted-foreground">{skill.skillKey}</td>
-                      <td className="py-2">
-                        <Badge variant={skill.scope === "org" ? "success" : "info"}>
-                          {skill.scope}
-                        </Badge>
-                      </td>
-                      <td className="py-2 text-muted-foreground">v{skill.version}</td>
-                      <td className="py-2">
-                        {skill.revokedAt ? (
-                          <Badge variant="danger">Revoked</Badge>
-                        ) : (
-                          <Badge variant="success">Active</Badge>
-                        )}
-                      </td>
-                      <td className="py-2 text-xs text-muted-foreground">
-                        {new Date(skill.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="py-2 text-xs text-muted-foreground">
-                        {skill.revokedAt ? new Date(skill.revokedAt).toLocaleDateString() : "—"}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="pb-2 font-medium">Skill Name</th>
+                      <th className="pb-2 font-medium">Key</th>
+                      <th className="pb-2 font-medium">Scope</th>
+                      <th className="pb-2 font-medium">Version</th>
+                      <th className="pb-2 font-medium">Status</th>
+                      <th className="pb-2 font-medium">Approved</th>
+                      <th className="pb-2 font-medium">Revoked</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {history.map((skill) => (
+                      <tr key={skill.id} className="border-b border-border last:border-0">
+                        <td className="py-2 font-medium">{skill.skillName}</td>
+                        <td className="py-2 font-mono text-xs text-muted-foreground">{skill.skillKey}</td>
+                        <td className="py-2">
+                          <Badge variant={skill.scope === "org" ? "success" : "info"}>
+                            {skill.scope}
+                          </Badge>
+                        </td>
+                        <td className="py-2 text-muted-foreground">v{skill.version}</td>
+                        <td className="py-2">
+                          {skill.revokedAt ? (
+                            <Badge variant="danger">Revoked</Badge>
+                          ) : (
+                            <Badge variant="success">Active</Badge>
+                          )}
+                        </td>
+                        <td className="py-2 text-xs text-muted-foreground">
+                          {new Date(skill.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="py-2 text-xs text-muted-foreground">
+                          {skill.revokedAt ? new Date(skill.revokedAt).toLocaleDateString() : "\u2014"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           )
         )}

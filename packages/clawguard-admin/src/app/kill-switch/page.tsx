@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
+import { CardSkeleton } from "@/components/skeleton";
+import { useToast } from "@/components/toast";
 import { getAuth } from "@/lib/auth";
 import { getPolicy, setKillSwitch, getUsers } from "@/lib/api";
 
 export default function KillSwitchPage() {
   const router = useRouter();
+  const toast = useToast();
   const [active, setActive] = useState(false);
   const [message, setMessage] = useState("");
   const [userCount, setUserCount] = useState(0);
@@ -16,7 +19,6 @@ export default function KillSwitchPage() {
   const [toggling, setToggling] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     const auth = getAuth();
@@ -55,18 +57,17 @@ export default function KillSwitchPage() {
 
     setShowConfirm(false);
     setToggling(true);
-    setStatusMessage("");
 
     try {
       await setKillSwitch(auth.orgId, auth.accessToken, pendingAction, message || undefined);
       setActive(pendingAction);
-      setStatusMessage(
+      toast.success(
         pendingAction
           ? "Kill switch activated. All agent tool calls are now blocked."
           : "Kill switch deactivated. Normal operations resumed.",
       );
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Failed to update kill switch");
+      toast.error(err instanceof Error ? err.message : "Failed to update kill switch");
     } finally {
       setToggling(false);
     }
@@ -75,11 +76,15 @@ export default function KillSwitchPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <h2 className="text-2xl font-bold mb-6">Kill Switch</h2>
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="space-y-4">
+            <CardSkeleton />
+            <CardSkeleton />
+            <CardSkeleton />
+          </div>
         ) : (
           <div className="space-y-6">
             {/* Status */}
@@ -146,18 +151,6 @@ export default function KillSwitchPage() {
                 >
                   {toggling ? "Updating..." : "Activate Kill Switch"}
                 </button>
-              )}
-
-              {statusMessage && (
-                <p
-                  className={`mt-3 text-sm ${
-                    statusMessage.includes("activated") || statusMessage.includes("Failed")
-                      ? "text-red-600"
-                      : "text-green-600"
-                  }`}
-                >
-                  {statusMessage}
-                </p>
               )}
             </div>
 

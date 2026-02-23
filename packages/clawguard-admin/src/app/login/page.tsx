@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { setAuth } from "@/lib/auth";
 import { login } from "@/lib/api";
 
@@ -11,12 +11,14 @@ type AuthMode = { methods: string[] };
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [orgId, setOrgId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [authMethods, setAuthMethods] = useState<string[]>([]);
+
+  const expired = searchParams.get("expired") === "1";
 
   useEffect(() => {
     fetch(`${API_BASE}/api/v1/auth/mode`)
@@ -31,11 +33,11 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const data = await login(email, password, orgId);
+      const data = await login(email, password);
 
       setAuth({
         accessToken: data.accessToken,
-        orgId: data.orgId ?? orgId,
+        orgId: data.orgId,
         userId: data.userId,
         email: data.email ?? email,
         role: data.roles?.[0] ?? "admin",
@@ -61,7 +63,6 @@ export default function LoginPage() {
         body: JSON.stringify({
           grantType: "id_token",
           idToken: "dev-token",
-          orgId,
         }),
       });
 
@@ -73,7 +74,7 @@ export default function LoginPage() {
       const data = await res.json();
       setAuth({
         accessToken: data.accessToken,
-        orgId: data.orgId ?? orgId,
+        orgId: data.orgId,
         userId: data.userId,
         email: data.email ?? email,
         role: data.role ?? "admin",
@@ -96,23 +97,14 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-primary mb-1">ClawGuard</h1>
           <p className="text-sm text-muted-foreground mb-6">Admin Console</p>
 
+          {expired && (
+            <div className="mb-4 p-3 rounded-md text-sm bg-amber-500/10 text-amber-600 border border-amber-500/20">
+              Session expired. Please sign in again.
+            </div>
+          )}
+
           {showPasswordLogin ? (
             <form onSubmit={handlePasswordLogin} className="space-y-4">
-              <div>
-                <label htmlFor="orgId" className="block text-sm font-medium mb-1">
-                  Organization ID
-                </label>
-                <input
-                  id="orgId"
-                  type="text"
-                  value={orgId}
-                  onChange={(e) => setOrgId(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="org-123"
-                />
-              </div>
-
               <div>
                 <label htmlFor="email" className="block text-sm font-medium mb-1">
                   Email
@@ -168,21 +160,6 @@ export default function LoginPage() {
             </form>
           ) : (
             <form onSubmit={handleSsoLogin} className="space-y-4">
-              <div>
-                <label htmlFor="orgId" className="block text-sm font-medium mb-1">
-                  Organization ID
-                </label>
-                <input
-                  id="orgId"
-                  type="text"
-                  value={orgId}
-                  onChange={(e) => setOrgId(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="org-123"
-                />
-              </div>
-
               <div>
                 <label htmlFor="email" className="block text-sm font-medium mb-1">
                   Email

@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
+import { CardSkeleton } from "@/components/skeleton";
+import { useToast } from "@/components/toast";
 import { getAuth } from "@/lib/auth";
 import { getOrganization, updateOrganization, changePassword } from "@/lib/api";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [orgName, setOrgName] = useState("");
@@ -19,14 +22,12 @@ export default function SettingsPage() {
   const [audience, setAudience] = useState("");
   const [orgId, setOrgId] = useState("");
   const [createdAt, setCreatedAt] = useState("");
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Change password state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     const auth = getAuth();
@@ -56,7 +57,6 @@ export default function SettingsPage() {
     const auth = getAuth();
     if (!auth) return;
     setSaving(true);
-    setMessage(null);
 
     try {
       const body: {
@@ -77,9 +77,9 @@ export default function SettingsPage() {
       }
 
       await updateOrganization(auth.orgId, auth.accessToken, body);
-      setMessage({ type: "success", text: "Settings saved." });
+      toast.success("Settings saved.");
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to save settings" });
+      toast.error(err instanceof Error ? err.message : "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -87,15 +87,14 @@ export default function SettingsPage() {
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
-    setPasswordMessage(null);
 
     if (newPassword !== confirmPassword) {
-      setPasswordMessage({ type: "error", text: "New passwords do not match." });
+      toast.error("New passwords do not match.");
       return;
     }
 
     if (newPassword.length < 6) {
-      setPasswordMessage({ type: "error", text: "New password must be at least 6 characters." });
+      toast.error("New password must be at least 6 characters.");
       return;
     }
 
@@ -109,15 +108,12 @@ export default function SettingsPage() {
         currentPassword,
         newPassword,
       });
-      setPasswordMessage({ type: "success", text: "Password changed successfully." });
+      toast.success("Password changed successfully.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
-      setPasswordMessage({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to change password",
-      });
+      toast.error(err instanceof Error ? err.message : "Failed to change password");
     } finally {
       setChangingPassword(false);
     }
@@ -126,17 +122,14 @@ export default function SettingsPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <h2 className="text-2xl font-bold mb-6">Organization Settings</h2>
 
-        {message && (
-          <div className={`mb-4 p-3 rounded-md text-sm ${message.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
-            {message.text}
-          </div>
-        )}
-
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="space-y-4">
+            <CardSkeleton />
+            <CardSkeleton />
+          </div>
         ) : (
           <div className="space-y-6">
             <Card>
@@ -220,12 +213,6 @@ export default function SettingsPage() {
             <Card>
               <CardTitle>Change Password</CardTitle>
               <form onSubmit={handleChangePassword} className="mt-4 space-y-4 max-w-md">
-                {passwordMessage && (
-                  <div className={`p-3 rounded-md text-sm ${passwordMessage.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
-                    {passwordMessage.text}
-                  </div>
-                )}
-
                 <div>
                   <label className="text-sm font-medium block mb-1">Current Password</label>
                   <input

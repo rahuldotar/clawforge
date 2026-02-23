@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
-import { Badge } from "@/components/badge";
+import { CardSkeleton } from "@/components/skeleton";
+import { useToast } from "@/components/toast";
 import { getAuth } from "@/lib/auth";
 import { getUsers, createUser, updateUser, deleteUser } from "@/lib/api";
 import type { OrgUser } from "@/lib/api";
 
 export default function UsersPage() {
   const router = useRouter();
+  const toast = useToast();
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
@@ -19,7 +21,6 @@ export default function UsersPage() {
   const [inviteRole, setInviteRole] = useState("user");
   const [invitePassword, setInvitePassword] = useState("");
   const [inviting, setInviting] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -42,7 +43,6 @@ export default function UsersPage() {
     const auth = getAuth();
     if (!auth) return;
     setInviting(true);
-    setMessage(null);
     try {
       await createUser(auth.orgId, auth.accessToken, {
         email: inviteEmail,
@@ -50,7 +50,7 @@ export default function UsersPage() {
         role: inviteRole,
         password: invitePassword || undefined,
       });
-      setMessage({ type: "success", text: `User ${inviteEmail} created.` });
+      toast.success(`User ${inviteEmail} created.`);
       setShowInvite(false);
       setInviteEmail("");
       setInviteName("");
@@ -58,7 +58,7 @@ export default function UsersPage() {
       setInvitePassword("");
       loadUsers();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to create user" });
+      toast.error(err instanceof Error ? err.message : "Failed to create user");
     } finally {
       setInviting(false);
     }
@@ -67,13 +67,12 @@ export default function UsersPage() {
   async function handleRoleChange(userId: string, newRole: string) {
     const auth = getAuth();
     if (!auth) return;
-    setMessage(null);
     try {
       await updateUser(auth.orgId, userId, auth.accessToken, { role: newRole });
-      setMessage({ type: "success", text: "Role updated." });
+      toast.success("Role updated.");
       loadUsers();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to update role" });
+      toast.error(err instanceof Error ? err.message : "Failed to update role");
     }
   }
 
@@ -81,13 +80,12 @@ export default function UsersPage() {
     const auth = getAuth();
     if (!auth) return;
     if (!confirm(`Remove ${email} from the organization? This action cannot be undone.`)) return;
-    setMessage(null);
     try {
       await deleteUser(auth.orgId, userId, auth.accessToken);
-      setMessage({ type: "success", text: `User ${email} removed.` });
+      toast.success(`User ${email} removed.`);
       loadUsers();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to remove user" });
+      toast.error(err instanceof Error ? err.message : "Failed to remove user");
     }
   }
 
@@ -111,7 +109,7 @@ export default function UsersPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">Users</h2>
           <div className="flex items-center gap-4">
@@ -124,12 +122,6 @@ export default function UsersPage() {
             </button>
           </div>
         </div>
-
-        {message && (
-          <div className={`mb-4 p-3 rounded-md text-sm ${message.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
-            {message.text}
-          </div>
-        )}
 
         {showInvite && (
           <Card className="mb-6">
@@ -195,7 +187,9 @@ export default function UsersPage() {
         )}
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="space-y-4">
+            <CardSkeleton />
+          </div>
         ) : users.length === 0 ? (
           <p className="text-muted-foreground">No users found.</p>
         ) : (
