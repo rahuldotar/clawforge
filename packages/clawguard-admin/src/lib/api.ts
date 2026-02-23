@@ -2,6 +2,8 @@
  * ClawGuard control plane API client for the admin console.
  */
 
+import { clearAuth } from "@/lib/auth";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
 type FetchOptions = {
@@ -24,6 +26,12 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
 
+  if (response.status === 401) {
+    clearAuth();
+    window.location.href = "/login?expired=1";
+    throw new Error("Session expired");
+  }
+
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`API error (${response.status}): ${text}`);
@@ -34,7 +42,7 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
 
 // --- Auth ---
 
-export function login(email: string, password: string, orgId: string) {
+export function login(email: string, password: string) {
   return apiFetch<{
     accessToken: string;
     refreshToken: string;
@@ -45,7 +53,7 @@ export function login(email: string, password: string, orgId: string) {
     roles: string[];
   }>("/api/v1/auth/login", {
     method: "POST",
-    body: { email, password, orgId },
+    body: { email, password },
   });
 }
 

@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle, StatCard } from "@/components/card";
 import { Badge } from "@/components/badge";
+import { CardSkeleton, Skeleton } from "@/components/skeleton";
 import { getAuth } from "@/lib/auth";
 import { getPolicy, queryAudit, getPendingSkills, getUsers, getConnectedClients } from "@/lib/api";
-import type { EffectivePolicy, AuditEvent, OrgUser } from "@/lib/api";
+import type { EffectivePolicy, AuditEvent } from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -59,11 +60,18 @@ export default function DashboardPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <h2 className="text-2xl font-bold mb-6">Dashboard</h2>
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-lg" />
+              ))}
+            </div>
+            <CardSkeleton />
+          </div>
         ) : (
           <>
             {/* Stats row */}

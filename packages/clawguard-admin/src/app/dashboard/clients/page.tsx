@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
-import { Card, CardTitle, StatCard } from "@/components/card";
+import { Card, StatCard } from "@/components/card";
 import { Badge } from "@/components/badge";
+import { CardSkeleton, Skeleton } from "@/components/skeleton";
 import { getAuth } from "@/lib/auth";
 import { getConnectedClients } from "@/lib/api";
 import type { ConnectedClient, ClientsSummary } from "@/lib/api";
@@ -54,11 +55,18 @@ export default function ConnectedClientsPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <h2 className="text-2xl font-bold mb-6">Connected Clients</h2>
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-lg" />
+              ))}
+            </div>
+            <CardSkeleton />
+          </div>
         ) : (
           <>
             {/* Summary stats */}

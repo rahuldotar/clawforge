@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Card, CardTitle } from "@/components/card";
 import { Badge } from "@/components/badge";
+import { CardSkeleton } from "@/components/skeleton";
+import { useToast } from "@/components/toast";
 import { getAuth } from "@/lib/auth";
 import {
   getEnrollmentTokens,
@@ -15,6 +17,7 @@ import type { EnrollmentToken } from "@/lib/api";
 
 export default function EnrollmentPage() {
   const router = useRouter();
+  const toast = useToast();
   const [tokens, setTokens] = useState<EnrollmentToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -24,7 +27,6 @@ export default function EnrollmentPage() {
   const [creating, setCreating] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     loadTokens();
@@ -47,7 +49,6 @@ export default function EnrollmentPage() {
     const auth = getAuth();
     if (!auth) return;
     setCreating(true);
-    setMessage(null);
     try {
       const body: { label?: string; expiresAt?: string; maxUses?: number } = {};
       if (label.trim()) body.label = label.trim();
@@ -62,9 +63,10 @@ export default function EnrollmentPage() {
       setLabel("");
       setMaxUses("");
       setExpiresIn("");
+      toast.success("Enrollment token created.");
       loadTokens();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to create token" });
+      toast.error(err instanceof Error ? err.message : "Failed to create token");
     } finally {
       setCreating(false);
     }
@@ -76,10 +78,10 @@ export default function EnrollmentPage() {
     if (!confirm("Revoke this enrollment token? It will no longer accept new enrollments.")) return;
     try {
       await revokeEnrollmentToken(auth.orgId, tokenId, auth.accessToken);
-      setMessage({ type: "success", text: "Token revoked." });
+      toast.success("Token revoked.");
       loadTokens();
     } catch {
-      setMessage({ type: "error", text: "Failed to revoke token." });
+      toast.error("Failed to revoke token.");
     }
   }
 
@@ -94,7 +96,7 @@ export default function EnrollmentPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">Enrollment Tokens</h2>
           <button
@@ -104,12 +106,6 @@ export default function EnrollmentPage() {
             Create Token
           </button>
         </div>
-
-        {message && (
-          <div className={`mb-4 p-3 rounded-md text-sm ${message.type === "error" ? "bg-red-500/10 text-red-500" : "bg-green-500/10 text-green-500"}`}>
-            {message.text}
-          </div>
-        )}
 
         {newToken && (
           <Card className="mb-6 border-green-500/30 bg-green-500/5">
@@ -184,7 +180,7 @@ export default function EnrollmentPage() {
         )}
 
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <CardSkeleton />
         ) : tokens.length === 0 ? (
           <p className="text-muted-foreground">No active enrollment tokens. Create one to onboard employees.</p>
         ) : (
